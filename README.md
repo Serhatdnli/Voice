@@ -1,71 +1,128 @@
-# VoiceBoard - Meme Ses Kartı
+# VoiceBoard - Meme Ses Karti
 
-MyInstants.com entegrasyonlu, oyun içi ses efektleri için Windows masaüstü uygulaması.
+MyInstants.com entegrasyonlu, oyun ici ses efektleri icin Windows masaustu uygulamasi.
 
-## Özellikler
+**Soundpad gibi calisir!** APO teknolojisi sayesinde VB-Cable gerektirmez.
 
-- **MyInstants Entegrasyonu**: Trend sesleri görüntüle, arama yap, doğrudan indir
-- **Global Kısayol Tuşları**: Oyun içindeyken bile çalışan hotkey desteği
-- **Sanal Mikrofon Desteği**: VB-Cable veya Virtual Audio Cable ile sesleri mikrofon olarak oynat
-- **Ses Yönetimi**: Her ses için ayrı ses seviyesi ayarı
-- **Otomatik Kayıt**: Ayarlar ve ses kütüphanesi otomatik kaydedilir
+## Ozellikler
 
-## Gereksinimler
-
-- Windows 10/11
-- .NET 8.0 Runtime
-- VB-Cable veya Virtual Audio Cable (mikrofon çıkışı için)
+- **MyInstants Entegrasyonu**: Trend sesleri goruntule, arama yap, dogrudan indir
+- **Global Kisayol Tuslari**: Oyun icindeyken bile calisan hotkey destegi
+- **APO Modu**: Soundpad gibi dogrudan mikrofon enjeksiyonu (VB-Cable gerekmez!)
+- **VB-Cable Fallback**: APO kurulmadiysa VB-Cable ile calisir
+- **Ses Yonetimi**: Her ses icin ayri ses seviyesi ayari
+- **Otomatik Kayit**: Ayarlar ve ses kutuphanesi otomatik kaydedilir
 
 ## Kurulum
 
-1. [VB-Cable](https://vb-audio.com/Cable/) veya [Virtual Audio Cable](https://vac.muzychenko.net/en/) kurun
-2. Projeyi derleyin veya release'ten indirin:
+### Yontem 1: APO Modu (Onerilen - Soundpad gibi)
+
+1. Projeyi derleyin:
    ```bash
    dotnet build -c Release
    ```
-3. Uygulamayı çalıştırın
-4. Ayarlardan sanal kablo cihazını seçin
-5. Oyun/Discord ses ayarlarından mikrofon olarak "CABLE Output" seçin
 
-## Kullanım
+2. APO'yu yoneticikent calistirarak kurun:
+   ```powershell
+   # PowerShell'i yonetici olarak acin
+   cd Installer
+   .\Install-VoiceBoardAPO.ps1
+   ```
+
+3. Bilgisayari yeniden baslatin
+
+4. Uygulamayi calistirin - VB-Cable gerekmez!
+
+### Yontem 2: VB-Cable Modu (Fallback)
+
+APO kurmak istemiyorsaniz:
+
+1. [VB-Cable](https://vb-audio.com/Cable/) kurun
+2. Uygulamayi calistirin
+3. Mikrofon ve Sanal Kablo secin
+4. Discord/oyunda mikrofon olarak "CABLE Output" secin
+
+## Nasil Calisir?
+
+### APO Modu (Soundpad gibi)
+```
+[Uygulama] --> [APO DLL] --> [Windows Audio Engine] --> [Discord/Oyun]
+                  ^
+            Mikrofon stream'ine
+            dogrudan enjekte
+```
+- VB-Cable gerekmez
+- Mikrofon secimi gerekmez
+- Discord'da ayar degisikligi gerekmez
+
+### VB-Cable Modu (Fallback)
+```
+[Mikrofon] --> [Uygulama] --> [VB-Cable] --> [Discord/Oyun]
+[Ses Dosyasi] ----^
+```
+
+## Kullanim
 
 ### Ses Ekleme
-1. Sol panelde arama yapın veya "Trend Sesler" butonuna tıklayın
-2. İstediğiniz sese çift tıklayın veya sağ tık > "İndir ve Ekle"
+1. Sol panelde arama yapin veya "Trend Sesler" butonuna tiklayin
+2. Istediginiz sese cift tiklayin veya sag tik > "Indir ve Ekle"
 
-### Kısayol Tuşu Atama
-1. Sağ panelde sese sağ tıklayın
-2. "Kısayol Ata" seçin
-3. İstediğiniz tuş kombinasyonunu basın (örn: Ctrl+F1)
+### Kisayol Tusu Atama
+1. Sag panelde sese sag tiklayin
+2. "Kisayol Ata" secin
+3. Istediginiz tus kombinasyonunu basin (orn: Ctrl+F1)
 
-### Ses Çalma
-- Listeden çift tıklayın veya atanmış kısayol tuşuna basın
-- Oyun içindeyken de çalışır!
+### Ses Calma
+- Listeden cift tiklayin veya atanmis kisayol tusuna basin
+- Oyun icindeyken de calisir!
 
 ## Teknik Detaylar
 
+### APO (Audio Processing Object)
+- Windows'un resmi ses isleme API'si
+- User-mode'da calisir (kernel driver degil)
+- Mikrofon capture stream'ine enjekte olur
+- Soundpad ile ayni teknolojiyi kullanir
+
+### Kullanilan Teknolojiler
 - **Framework**: .NET 8.0 Windows Forms
-- **Ses Kütüphanesi**: NAudio
+- **Ses Kutuphanesi**: NAudio
 - **Web Scraping**: HtmlAgilityPack
 - **Veri Depolama**: JSON (Newtonsoft.Json)
+- **APO**: Windows Audio Processing Object API
 
-## Yapı
+## Proje Yapisi
 
 ```
 VoiceBoard/
+├── APO/                      # C++ APO DLL projesi
+│   ├── VoiceBoardAPO.cpp     # APO implementasyonu
+│   ├── VoiceBoardAPO.h       # Header
+│   └── dllmain.cpp           # DLL entry point
+├── Installer/
+│   └── Install-VoiceBoardAPO.ps1  # APO kurulum scripti
 ├── Models/
-│   ├── SoundItem.cs      # Ses modeli
-│   ├── SearchResult.cs   # Arama sonucu modeli
-│   └── AppSettings.cs    # Uygulama ayarları
+│   ├── SoundItem.cs
+│   ├── SearchResult.cs
+│   └── AppSettings.cs
 ├── Services/
-│   ├── MyInstantsService.cs    # MyInstants API
-│   ├── AudioService.cs         # Ses çalma servisi
-│   ├── GlobalHotkeyService.cs  # Hotkey yönetimi
-│   └── SettingsService.cs      # Ayar kaydetme/yükleme
-├── MainForm.cs           # Ana form
-├── HotkeyDialog.cs       # Kısayol atama dialogu
-├── VolumeDialog.cs       # Ses ayarı dialogu
-└── Program.cs            # Giriş noktası
+│   ├── MyInstantsService.cs  # MyInstants API
+│   ├── AudioService.cs       # Ses calma (APO + VB-Cable)
+│   ├── APOService.cs         # APO iletisimi
+│   ├── GlobalHotkeyService.cs
+│   └── SettingsService.cs
+├── MainForm.cs
+├── HotkeyDialog.cs
+├── VolumeDialog.cs
+└── Program.cs
+```
+
+## APO Kaldirma
+
+```powershell
+# PowerShell'i yonetici olarak acin
+cd Installer
+.\Install-VoiceBoardAPO.ps1 -Uninstall
 ```
 
 ## Lisans

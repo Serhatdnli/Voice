@@ -29,6 +29,8 @@ public partial class MainForm : Form
     private TrackBar _micVolumeSlider = null!;
     private Label _statusLabel = null!;
     private Label _passthroughStatusLabel = null!;
+    private Label _apoStatusLabel = null!;
+    private Panel _vbCablePanel = null!;
     private ProgressBar _downloadProgress = null!;
     private Button _stopButton = null!;
 
@@ -179,25 +181,51 @@ public partial class MainForm : Form
         soundsContextMenu.Items.Add("Sil", null, DeleteSound_Click);
         _soundsList.ContextMenuStrip = soundsContextMenu;
 
-        // Ayarlar Paneli - Ses Cihazlari
-        var devicesGroup = new GroupBox
+        // APO Durum Paneli
+        var apoGroup = new GroupBox
         {
-            Text = "Ses Cihazlari",
+            Text = "Ses Enjeksiyon Modu",
             Location = new Point(10, 345),
-            Size = new Size(580, 100)
+            Size = new Size(580, 60)
+        };
+
+        _apoStatusLabel = new Label
+        {
+            Location = new Point(10, 22),
+            Size = new Size(560, 30),
+            Font = new Font("Segoe UI", 9)
+        };
+
+        apoGroup.Controls.Add(_apoStatusLabel);
+
+        // VB-Cable Paneli (APO yoksa gorunur)
+        _vbCablePanel = new Panel
+        {
+            Location = new Point(10, 410),
+            Size = new Size(580, 90),
+            BorderStyle = BorderStyle.FixedSingle
+        };
+
+        var vbCableTitle = new Label
+        {
+            Text = "VB-Cable Ayarlari (Fallback Mod)",
+            Location = new Point(5, 5),
+            AutoSize = true,
+            Font = new Font("Segoe UI", 9, FontStyle.Bold),
+            ForeColor = Color.DarkOrange
         };
 
         var micLabel = new Label
         {
             Text = "Mikrofon:",
-            Location = new Point(10, 25),
+            Location = new Point(10, 30),
             AutoSize = true
         };
 
         _microphoneCombo = new ComboBox
         {
-            Location = new Point(100, 22),
-            Size = new Size(250, 25),
+            Location = new Point(100, 27),
+            Size = new Size(200, 25),
             DropDownStyle = ComboBoxStyle.DropDownList
         };
         _microphoneCombo.SelectedIndexChanged += MicrophoneCombo_SelectedIndexChanged;
@@ -205,14 +233,14 @@ public partial class MainForm : Form
         var virtualCableLabel = new Label
         {
             Text = "Sanal Kablo:",
-            Location = new Point(10, 55),
+            Location = new Point(10, 58),
             AutoSize = true
         };
 
         _virtualCableCombo = new ComboBox
         {
-            Location = new Point(100, 52),
-            Size = new Size(250, 25),
+            Location = new Point(100, 55),
+            Size = new Size(200, 25),
             DropDownStyle = ComboBoxStyle.DropDownList
         };
         _virtualCableCombo.SelectedIndexChanged += VirtualCableCombo_SelectedIndexChanged;
@@ -220,15 +248,15 @@ public partial class MainForm : Form
         var refreshDevicesButton = new Button
         {
             Text = "Yenile",
-            Location = new Point(360, 35),
-            Size = new Size(60, 30)
+            Location = new Point(310, 40),
+            Size = new Size(60, 25)
         };
         refreshDevicesButton.Click += (s, e) => RefreshAudioDevices();
 
         _micPassthroughCheck = new CheckBox
         {
-            Text = "Mikrofon Aktarimi (Passthrough)",
-            Location = new Point(430, 25),
+            Text = "Passthrough",
+            Location = new Point(380, 30),
             AutoSize = true,
             Checked = true
         };
@@ -237,14 +265,14 @@ public partial class MainForm : Form
         _passthroughStatusLabel = new Label
         {
             Text = "Durum: Pasif",
-            Location = new Point(430, 55),
+            Location = new Point(380, 55),
             AutoSize = true,
             ForeColor = Color.Gray
         };
 
-        devicesGroup.Controls.AddRange(new Control[]
+        _vbCablePanel.Controls.AddRange(new Control[]
         {
-            micLabel, _microphoneCombo,
+            vbCableTitle, micLabel, _microphoneCombo,
             virtualCableLabel, _virtualCableCombo,
             refreshDevicesButton, _micPassthroughCheck, _passthroughStatusLabel
         });
@@ -253,8 +281,8 @@ public partial class MainForm : Form
         var volumeGroup = new GroupBox
         {
             Text = "Ses Ayarlari",
-            Location = new Point(10, 455),
-            Size = new Size(580, 100)
+            Location = new Point(10, 510),
+            Size = new Size(580, 80)
         };
 
         _playToSpeakersCheck = new CheckBox
@@ -361,7 +389,7 @@ public partial class MainForm : Form
 
         rightPanel.Controls.AddRange(new Control[]
         {
-            soundsLabel, _soundsList, devicesGroup, volumeGroup
+            soundsLabel, _soundsList, apoGroup, _vbCablePanel, volumeGroup
         });
 
         Controls.AddRange(new Control[] { searchPanel, rightPanel, statusPanel });
@@ -398,7 +426,27 @@ public partial class MainForm : Form
         _micVolumeSlider.Value = (int)(_settings.MicrophoneVolume * 100);
         _micPassthroughCheck.Checked = _settings.MicrophonePassthroughEnabled;
 
+        UpdateAPOStatus();
         RefreshSoundsList();
+    }
+
+    private void UpdateAPOStatus()
+    {
+        if (_audioService.IsAPOInstalled)
+        {
+            _apoStatusLabel.Text = "APO Modu: AKTIF - Soundpad gibi calisir, VB-Cable gerekmez!";
+            _apoStatusLabel.ForeColor = Color.Green;
+            _vbCablePanel.Visible = false;
+            _statusLabel.Text = "Hazir - APO modu aktif";
+        }
+        else
+        {
+            _apoStatusLabel.Text = "APO kurulu degil. VB-Cable modu kullaniliyor.\n" +
+                                   "APO icin: Installer/Install-VoiceBoardAPO.ps1 calistirin";
+            _apoStatusLabel.ForeColor = Color.DarkOrange;
+            _vbCablePanel.Visible = true;
+            _statusLabel.Text = "VB-Cable modunda - Mikrofon ve sanal kablo secin";
+        }
     }
 
     private void SaveSettings()
