@@ -1,6 +1,6 @@
 using System.Net;
-using HtmlAgilityPack;
 using VoiceBoard.Models;
+using HtmlDoc = HtmlAgilityPack.HtmlDocument;
 
 namespace VoiceBoard.Services;
 
@@ -25,7 +25,7 @@ public class MyInstantsService
             var searchUrl = $"{BaseUrl}/tr/search/?name={WebUtility.UrlEncode(query)}";
             var html = await _httpClient.GetStringAsync(searchUrl, cancellationToken);
 
-            var doc = new HtmlDocument();
+            var doc = new HtmlDoc();
             doc.LoadHtml(html);
 
             var instantNodes = doc.DocumentNode.SelectNodes("//div[contains(@class, 'instant')]");
@@ -68,7 +68,7 @@ public class MyInstantsService
         {
             var html = await _httpClient.GetStringAsync($"{BaseUrl}/tr/", cancellationToken);
 
-            var doc = new HtmlDocument();
+            var doc = new HtmlDoc();
             doc.LoadHtml(html);
 
             var instantNodes = doc.DocumentNode.SelectNodes("//div[contains(@class, 'instant')]");
