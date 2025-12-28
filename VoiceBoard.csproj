@@ -6,8 +6,19 @@
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
-    <ApplicationIcon>icon.ico</ApplicationIcon>
     <StartupObject>VoiceBoard.Program</StartupObject>
+
+    <!-- Publish ayarlari -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+
+    <!-- Uygulama bilgileri -->
+    <AssemblyName>VoiceBoard</AssemblyName>
+    <Product>VoiceBoard - Meme Soundboard</Product>
+    <Company>VoiceBoard</Company>
+    <Version>1.0.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
