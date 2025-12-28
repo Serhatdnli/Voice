@@ -21,10 +21,14 @@ public partial class MainForm : Form
     private ListView _searchResultsList = null!;
     private ListView _soundsList = null!;
     private ComboBox _virtualCableCombo = null!;
+    private ComboBox _microphoneCombo = null!;
     private CheckBox _playToSpeakersCheck = null!;
     private CheckBox _playToVirtualCableCheck = null!;
+    private CheckBox _micPassthroughCheck = null!;
     private TrackBar _volumeSlider = null!;
+    private TrackBar _micVolumeSlider = null!;
     private Label _statusLabel = null!;
+    private Label _passthroughStatusLabel = null!;
     private ProgressBar _downloadProgress = null!;
     private Button _stopButton = null!;
 
@@ -44,9 +48,9 @@ public partial class MainForm : Form
     {
         SuspendLayout();
 
-        Text = "VoiceBoard - Meme Ses Kartı";
-        Size = new Size(1000, 700);
-        MinimumSize = new Size(800, 600);
+        Text = "VoiceBoard - Meme Ses Karti";
+        Size = new Size(1050, 750);
+        MinimumSize = new Size(900, 700);
         StartPosition = FormStartPosition.CenterScreen;
         Icon = SystemIcons.Application;
 
@@ -65,7 +69,7 @@ public partial class MainForm : Form
 
         var searchLabel = new Label
         {
-            Text = "🔍 MyInstants'ta Ara:",
+            Text = "MyInstants'ta Ara:",
             Location = new Point(10, 10),
             AutoSize = true,
             Font = new Font("Segoe UI", 10, FontStyle.Bold)
@@ -90,17 +94,18 @@ public partial class MainForm : Form
 
         _trendingButton = new Button
         {
-            Text = "🔥 Trend Sesler",
+            Text = "Trend Sesler",
             Location = new Point(10, 65),
             Size = new Size(370, 30),
             FlatStyle = FlatStyle.Flat,
-            BackColor = Color.FromArgb(255, 100, 100)
+            BackColor = Color.FromArgb(255, 100, 100),
+            ForeColor = Color.White
         };
         _trendingButton.Click += TrendingButton_Click;
 
         var searchResultsLabel = new Label
         {
-            Text = "Arama Sonuçları:",
+            Text = "Arama Sonuclari:",
             Location = new Point(10, 105),
             AutoSize = true,
             Font = new Font("Segoe UI", 9, FontStyle.Bold)
@@ -115,13 +120,13 @@ public partial class MainForm : Form
             GridLines = true,
             MultiSelect = false
         };
-        _searchResultsList.Columns.Add("Ses Adı", 280);
+        _searchResultsList.Columns.Add("Ses Adi", 280);
         _searchResultsList.Columns.Add("", 60);
         _searchResultsList.DoubleClick += SearchResultsList_DoubleClick;
 
         var searchResultContextMenu = new ContextMenuStrip();
-        searchResultContextMenu.Items.Add("▶ Önizle", null, PreviewSound_Click);
-        searchResultContextMenu.Items.Add("⬇ İndir ve Ekle", null, DownloadAndAdd_Click);
+        searchResultContextMenu.Items.Add("Onizle", null, PreviewSound_Click);
+        searchResultContextMenu.Items.Add("Indir ve Ekle", null, DownloadAndAdd_Click);
         _searchResultsList.ContextMenuStrip = searchResultContextMenu;
 
         _downloadProgress = new ProgressBar
@@ -137,7 +142,7 @@ public partial class MainForm : Form
             searchResultsLabel, _searchResultsList, _downloadProgress
         });
 
-        // Sağ Panel - Ses Listesi ve Ayarlar
+        // Sag Panel - Ses Listesi ve Ayarlar
         var rightPanel = new Panel
         {
             Dock = DockStyle.Fill,
@@ -146,7 +151,7 @@ public partial class MainForm : Form
 
         var soundsLabel = new Label
         {
-            Text = "🎵 Ses Kartım:",
+            Text = "Ses Kartim:",
             Location = new Point(10, 10),
             AutoSize = true,
             Font = new Font("Segoe UI", 10, FontStyle.Bold)
@@ -155,43 +160,58 @@ public partial class MainForm : Form
         _soundsList = new ListView
         {
             Location = new Point(10, 35),
-            Size = new Size(540, 350),
+            Size = new Size(580, 300),
             View = View.Details,
             FullRowSelect = true,
             GridLines = true
         };
-        _soundsList.Columns.Add("Ses Adı", 250);
-        _soundsList.Columns.Add("Kısayol Tuşu", 120);
+        _soundsList.Columns.Add("Ses Adi", 280);
+        _soundsList.Columns.Add("Kisayol Tusu", 120);
         _soundsList.Columns.Add("Ses", 60);
         _soundsList.Columns.Add("Durum", 80);
         _soundsList.DoubleClick += SoundsList_DoubleClick;
 
         var soundsContextMenu = new ContextMenuStrip();
-        soundsContextMenu.Items.Add("▶ Çal", null, PlaySound_Click);
-        soundsContextMenu.Items.Add("⌨ Kısayol Ata", null, AssignHotkey_Click);
-        soundsContextMenu.Items.Add("🔊 Ses Ayarla", null, AdjustVolume_Click);
+        soundsContextMenu.Items.Add("Cal", null, PlaySound_Click);
+        soundsContextMenu.Items.Add("Kisayol Ata", null, AssignHotkey_Click);
+        soundsContextMenu.Items.Add("Ses Ayarla", null, AdjustVolume_Click);
         soundsContextMenu.Items.Add(new ToolStripSeparator());
-        soundsContextMenu.Items.Add("🗑 Sil", null, DeleteSound_Click);
+        soundsContextMenu.Items.Add("Sil", null, DeleteSound_Click);
         _soundsList.ContextMenuStrip = soundsContextMenu;
 
-        // Ayarlar Paneli
-        var settingsGroup = new GroupBox
+        // Ayarlar Paneli - Ses Cihazlari
+        var devicesGroup = new GroupBox
         {
-            Text = "⚙ Ayarlar",
-            Location = new Point(10, 395),
-            Size = new Size(540, 130)
+            Text = "Ses Cihazlari",
+            Location = new Point(10, 345),
+            Size = new Size(580, 100)
         };
+
+        var micLabel = new Label
+        {
+            Text = "Mikrofon:",
+            Location = new Point(10, 25),
+            AutoSize = true
+        };
+
+        _microphoneCombo = new ComboBox
+        {
+            Location = new Point(100, 22),
+            Size = new Size(250, 25),
+            DropDownStyle = ComboBoxStyle.DropDownList
+        };
+        _microphoneCombo.SelectedIndexChanged += MicrophoneCombo_SelectedIndexChanged;
 
         var virtualCableLabel = new Label
         {
-            Text = "Sanal Kablo Cihazı:",
-            Location = new Point(10, 25),
+            Text = "Sanal Kablo:",
+            Location = new Point(10, 55),
             AutoSize = true
         };
 
         _virtualCableCombo = new ComboBox
         {
-            Location = new Point(130, 22),
+            Location = new Point(100, 52),
             Size = new Size(250, 25),
             DropDownStyle = ComboBoxStyle.DropDownList
         };
@@ -199,16 +219,48 @@ public partial class MainForm : Form
 
         var refreshDevicesButton = new Button
         {
-            Text = "🔄",
-            Location = new Point(385, 21),
-            Size = new Size(30, 25)
+            Text = "Yenile",
+            Location = new Point(360, 35),
+            Size = new Size(60, 30)
         };
         refreshDevicesButton.Click += (s, e) => RefreshAudioDevices();
 
+        _micPassthroughCheck = new CheckBox
+        {
+            Text = "Mikrofon Aktarimi (Passthrough)",
+            Location = new Point(430, 25),
+            AutoSize = true,
+            Checked = true
+        };
+        _micPassthroughCheck.CheckedChanged += MicPassthrough_Changed;
+
+        _passthroughStatusLabel = new Label
+        {
+            Text = "Durum: Pasif",
+            Location = new Point(430, 55),
+            AutoSize = true,
+            ForeColor = Color.Gray
+        };
+
+        devicesGroup.Controls.AddRange(new Control[]
+        {
+            micLabel, _microphoneCombo,
+            virtualCableLabel, _virtualCableCombo,
+            refreshDevicesButton, _micPassthroughCheck, _passthroughStatusLabel
+        });
+
+        // Ayarlar Paneli - Ses Seviyeleri
+        var volumeGroup = new GroupBox
+        {
+            Text = "Ses Ayarlari",
+            Location = new Point(10, 455),
+            Size = new Size(580, 100)
+        };
+
         _playToSpeakersCheck = new CheckBox
         {
-            Text = "Hoparlörlere Çal",
-            Location = new Point(10, 55),
+            Text = "Hoparlore Cal",
+            Location = new Point(10, 25),
             AutoSize = true,
             Checked = true
         };
@@ -216,8 +268,8 @@ public partial class MainForm : Form
 
         _playToVirtualCableCheck = new CheckBox
         {
-            Text = "Sanal Kabloya Çal (Mikrofon)",
-            Location = new Point(150, 55),
+            Text = "Sanal Kabloya Cal",
+            Location = new Point(130, 25),
             AutoSize = true,
             Checked = true
         };
@@ -225,15 +277,15 @@ public partial class MainForm : Form
 
         var volumeLabel = new Label
         {
-            Text = "Ana Ses:",
-            Location = new Point(10, 85),
+            Text = "Efekt Sesi:",
+            Location = new Point(10, 60),
             AutoSize = true
         };
 
         _volumeSlider = new TrackBar
         {
-            Location = new Point(70, 80),
-            Size = new Size(200, 40),
+            Location = new Point(80, 55),
+            Size = new Size(150, 40),
             Minimum = 0,
             Maximum = 100,
             Value = 100,
@@ -244,37 +296,63 @@ public partial class MainForm : Form
         var volumeValueLabel = new Label
         {
             Text = "100%",
-            Location = new Point(280, 85),
-            AutoSize = true
+            Location = new Point(235, 60),
+            Size = new Size(40, 20)
         };
         _volumeSlider.ValueChanged += (s, e) => volumeValueLabel.Text = $"{_volumeSlider.Value}%";
 
-        settingsGroup.Controls.AddRange(new Control[]
+        var micVolumeLabel = new Label
         {
-            virtualCableLabel, _virtualCableCombo, refreshDevicesButton,
+            Text = "Mikrofon:",
+            Location = new Point(290, 60),
+            AutoSize = true
+        };
+
+        _micVolumeSlider = new TrackBar
+        {
+            Location = new Point(355, 55),
+            Size = new Size(150, 40),
+            Minimum = 0,
+            Maximum = 150,
+            Value = 100,
+            TickFrequency = 15
+        };
+        _micVolumeSlider.ValueChanged += MicVolumeSlider_ValueChanged;
+
+        var micVolumeValueLabel = new Label
+        {
+            Text = "100%",
+            Location = new Point(510, 60),
+            Size = new Size(50, 20)
+        };
+        _micVolumeSlider.ValueChanged += (s, e) => micVolumeValueLabel.Text = $"{_micVolumeSlider.Value}%";
+
+        volumeGroup.Controls.AddRange(new Control[]
+        {
             _playToSpeakersCheck, _playToVirtualCableCheck,
-            volumeLabel, _volumeSlider, volumeValueLabel
+            volumeLabel, _volumeSlider, volumeValueLabel,
+            micVolumeLabel, _micVolumeSlider, micVolumeValueLabel
         });
 
-        // Durum Çubuğu
+        // Durum Cubugu
         var statusPanel = new Panel
         {
             Dock = DockStyle.Bottom,
-            Height = 35
+            Height = 40
         };
 
         _statusLabel = new Label
         {
-            Text = "Hazır",
-            Location = new Point(10, 8),
+            Text = "Hazir - VB-Cable kurun ve mikrofon + sanal kablo secin",
+            Location = new Point(10, 10),
             AutoSize = true
         };
 
         _stopButton = new Button
         {
-            Text = "⏹ Durdur",
-            Location = new Point(500, 5),
-            Size = new Size(80, 25),
+            Text = "Durdur",
+            Location = new Point(520, 7),
+            Size = new Size(80, 26),
             FlatStyle = FlatStyle.Flat
         };
         _stopButton.Click += (s, e) => _audioService.Stop();
@@ -283,7 +361,7 @@ public partial class MainForm : Form
 
         rightPanel.Controls.AddRange(new Control[]
         {
-            soundsLabel, _soundsList, settingsGroup
+            soundsLabel, _soundsList, devicesGroup, volumeGroup
         });
 
         Controls.AddRange(new Control[] { searchPanel, rightPanel, statusPanel });
@@ -311,10 +389,14 @@ public partial class MainForm : Form
         _audioService.PlayToSpeakers = _settings.PlayToSpeakers;
         _audioService.PlayToVirtualCable = _settings.PlayToVirtualCable;
         _audioService.MasterVolume = _settings.MasterVolume;
+        _audioService.MicrophoneVolume = _settings.MicrophoneVolume;
+        _audioService.MicrophonePassthroughEnabled = _settings.MicrophonePassthroughEnabled;
 
         _playToSpeakersCheck.Checked = _settings.PlayToSpeakers;
         _playToVirtualCableCheck.Checked = _settings.PlayToVirtualCable;
         _volumeSlider.Value = (int)(_settings.MasterVolume * 100);
+        _micVolumeSlider.Value = (int)(_settings.MicrophoneVolume * 100);
+        _micPassthroughCheck.Checked = _settings.MicrophonePassthroughEnabled;
 
         RefreshSoundsList();
     }
@@ -324,24 +406,51 @@ public partial class MainForm : Form
         _settings.PlayToSpeakers = _playToSpeakersCheck.Checked;
         _settings.PlayToVirtualCable = _playToVirtualCableCheck.Checked;
         _settings.MasterVolume = _volumeSlider.Value / 100f;
+        _settings.MicrophoneVolume = _micVolumeSlider.Value / 100f;
+        _settings.MicrophonePassthroughEnabled = _micPassthroughCheck.Checked;
 
         _settingsService.Save(_settings);
     }
 
     private void RefreshAudioDevices()
     {
-        var devices = _audioService.GetVirtualCableDevices();
-        _virtualCableCombo.Items.Clear();
-        _virtualCableCombo.Items.Add("(Seçiniz)");
+        // Mikrofon listesi
+        var inputDevices = _audioService.GetInputDevices();
+        _microphoneCombo.Items.Clear();
+        _microphoneCombo.Items.Add("(Seciniz)");
 
-        foreach (var (deviceNumber, name) in devices)
+        foreach (var (deviceNumber, name) in inputDevices)
+        {
+            _microphoneCombo.Items.Add(new DeviceItem(deviceNumber, name));
+        }
+
+        _microphoneCombo.SelectedIndex = 0;
+
+        if (!string.IsNullOrEmpty(_settings.MicrophoneDevice))
+        {
+            for (int i = 1; i < _microphoneCombo.Items.Count; i++)
+            {
+                if (_microphoneCombo.Items[i] is DeviceItem item &&
+                    item.Name == _settings.MicrophoneDevice)
+                {
+                    _microphoneCombo.SelectedIndex = i;
+                    break;
+                }
+            }
+        }
+
+        // Sanal kablo listesi
+        var virtualDevices = _audioService.GetVirtualCableDevices();
+        _virtualCableCombo.Items.Clear();
+        _virtualCableCombo.Items.Add("(Seciniz)");
+
+        foreach (var (deviceNumber, name) in virtualDevices)
         {
             _virtualCableCombo.Items.Add(new DeviceItem(deviceNumber, name));
         }
 
         _virtualCableCombo.SelectedIndex = 0;
 
-        // Eğer kayıtlı cihaz varsa seç
         if (!string.IsNullOrEmpty(_settings.VirtualCableDevice))
         {
             for (int i = 1; i < _virtualCableCombo.Items.Count; i++)
@@ -354,6 +463,113 @@ public partial class MainForm : Form
                 }
             }
         }
+
+        UpdatePassthroughStatus();
+    }
+
+    private void MicrophoneCombo_SelectedIndexChanged(object? sender, EventArgs e)
+    {
+        if (_microphoneCombo.SelectedItem is DeviceItem device)
+        {
+            _audioService.MicrophoneDeviceNumber = device.DeviceNumber;
+            _settings.MicrophoneDevice = device.Name;
+            SaveSettings();
+            TryStartPassthrough();
+        }
+        else
+        {
+            _audioService.MicrophoneDeviceNumber = null;
+            _settings.MicrophoneDevice = null;
+            SaveSettings();
+            _audioService.StopMicrophonePassthrough();
+        }
+        UpdatePassthroughStatus();
+    }
+
+    private void VirtualCableCombo_SelectedIndexChanged(object? sender, EventArgs e)
+    {
+        if (_virtualCableCombo.SelectedItem is DeviceItem device)
+        {
+            _audioService.VirtualCableDeviceNumber = device.DeviceNumber;
+            _settings.VirtualCableDevice = device.Name;
+            SaveSettings();
+            TryStartPassthrough();
+        }
+        else
+        {
+            _audioService.VirtualCableDeviceNumber = null;
+            _settings.VirtualCableDevice = null;
+            SaveSettings();
+            _audioService.StopMicrophonePassthrough();
+        }
+        UpdatePassthroughStatus();
+    }
+
+    private void MicPassthrough_Changed(object? sender, EventArgs e)
+    {
+        _audioService.MicrophonePassthroughEnabled = _micPassthroughCheck.Checked;
+        SaveSettings();
+
+        if (_micPassthroughCheck.Checked)
+        {
+            TryStartPassthrough();
+        }
+        else
+        {
+            _audioService.StopMicrophonePassthrough();
+        }
+        UpdatePassthroughStatus();
+    }
+
+    private void TryStartPassthrough()
+    {
+        if (_audioService.MicrophoneDeviceNumber.HasValue &&
+            _audioService.VirtualCableDeviceNumber.HasValue &&
+            _audioService.MicrophonePassthroughEnabled)
+        {
+            _audioService.StartMicrophonePassthrough();
+        }
+    }
+
+    private void UpdatePassthroughStatus()
+    {
+        if (_audioService.IsPassthroughActive)
+        {
+            _passthroughStatusLabel.Text = "Durum: Aktif";
+            _passthroughStatusLabel.ForeColor = Color.Green;
+            _statusLabel.Text = "Hazir - Mikrofon aktarimi calisiyor";
+        }
+        else if (_audioService.MicrophonePassthroughEnabled)
+        {
+            if (!_audioService.MicrophoneDeviceNumber.HasValue)
+            {
+                _passthroughStatusLabel.Text = "Durum: Mikrofon sec";
+                _passthroughStatusLabel.ForeColor = Color.Orange;
+            }
+            else if (!_audioService.VirtualCableDeviceNumber.HasValue)
+            {
+                _passthroughStatusLabel.Text = "Durum: Sanal kablo sec";
+                _passthroughStatusLabel.ForeColor = Color.Orange;
+            }
+            else
+            {
+                _passthroughStatusLabel.Text = "Durum: Baslatiliyor...";
+                _passthroughStatusLabel.ForeColor = Color.Orange;
+            }
+            _statusLabel.Text = "Mikrofon ve sanal kablo seciniz";
+        }
+        else
+        {
+            _passthroughStatusLabel.Text = "Durum: Devre disi";
+            _passthroughStatusLabel.ForeColor = Color.Gray;
+            _statusLabel.Text = "Hazir";
+        }
+    }
+
+    private void MicVolumeSlider_ValueChanged(object? sender, EventArgs e)
+    {
+        _audioService.MicrophoneVolume = _micVolumeSlider.Value / 100f;
+        SaveSettings();
     }
 
     private async void SearchButton_Click(object? sender, EventArgs e)
@@ -365,7 +581,7 @@ public partial class MainForm : Form
         _searchCts = new CancellationTokenSource();
 
         _searchButton.Enabled = false;
-        _statusLabel.Text = "Aranıyor...";
+        _statusLabel.Text = "Araniyor...";
         _searchResultsList.Items.Clear();
 
         try
@@ -375,12 +591,12 @@ public partial class MainForm : Form
             foreach (var result in results)
             {
                 var item = new ListViewItem(result.Title);
-                item.SubItems.Add("▶");
+                item.SubItems.Add(">");
                 item.Tag = result;
                 _searchResultsList.Items.Add(item);
             }
 
-            _statusLabel.Text = $"{results.Count} sonuç bulundu";
+            _statusLabel.Text = $"{results.Count} sonuc bulundu";
         }
         catch (OperationCanceledException)
         {
@@ -402,7 +618,7 @@ public partial class MainForm : Form
         _searchCts = new CancellationTokenSource();
 
         _trendingButton.Enabled = false;
-        _statusLabel.Text = "Trend sesler yükleniyor...";
+        _statusLabel.Text = "Trend sesler yukleniyor...";
         _searchResultsList.Items.Clear();
 
         try
@@ -412,12 +628,12 @@ public partial class MainForm : Form
             foreach (var result in results)
             {
                 var item = new ListViewItem(result.Title);
-                item.SubItems.Add("▶");
+                item.SubItems.Add(">");
                 item.Tag = result;
                 _searchResultsList.Items.Add(item);
             }
 
-            _statusLabel.Text = $"{results.Count} trend ses yüklendi";
+            _statusLabel.Text = $"{results.Count} trend ses yuklendi";
         }
         catch (Exception ex)
         {
@@ -441,7 +657,7 @@ public partial class MainForm : Form
         var searchResult = _searchResultsList.SelectedItems[0].Tag as SearchResult;
         if (searchResult == null) return;
 
-        _statusLabel.Text = "Önizleme yükleniyor...";
+        _statusLabel.Text = "Onizleme yukleniyor...";
 
         try
         {
@@ -449,11 +665,11 @@ public partial class MainForm : Form
             await _myInstantsService.DownloadSoundAsync(searchResult.SoundUrl, tempPath);
 
             _audioService.PlaySound(tempPath);
-            _statusLabel.Text = $"Çalıyor: {searchResult.Title}";
+            _statusLabel.Text = $"Caliniyor: {searchResult.Title}";
         }
         catch (Exception ex)
         {
-            _statusLabel.Text = $"Önizleme hatası: {ex.Message}";
+            _statusLabel.Text = $"Onizleme hatasi: {ex.Message}";
         }
     }
 
@@ -469,7 +685,7 @@ public partial class MainForm : Form
 
         _downloadProgress.Visible = true;
         _downloadProgress.Value = 0;
-        _statusLabel.Text = "İndiriliyor...";
+        _statusLabel.Text = "Indiriliyor...";
 
         try
         {
@@ -491,7 +707,7 @@ public partial class MainForm : Form
         }
         catch (Exception ex)
         {
-            _statusLabel.Text = $"İndirme hatası: {ex.Message}";
+            _statusLabel.Text = $"Indirme hatasi: {ex.Message}";
         }
         finally
         {
@@ -508,7 +724,7 @@ public partial class MainForm : Form
             var item = new ListViewItem(sound.Name);
             item.SubItems.Add(sound.HotkeyDisplayText);
             item.SubItems.Add($"{(int)(sound.Volume * 100)}%");
-            item.SubItems.Add(sound.IsDownloaded ? "✓" : "✗");
+            item.SubItems.Add(sound.IsDownloaded ? "OK" : "X");
             item.Tag = sound;
             _soundsList.Items.Add(item);
         }
@@ -527,7 +743,7 @@ public partial class MainForm : Form
         if (sound == null || !sound.IsDownloaded) return;
 
         _audioService.PlaySound(sound.LocalPath, sound.Volume);
-        _statusLabel.Text = $"Çalıyor: {sound.Name}";
+        _statusLabel.Text = $"Caliniyor: {sound.Name}";
     }
 
     private void AssignHotkey_Click(object? sender, EventArgs e)
@@ -540,7 +756,6 @@ public partial class MainForm : Form
         using var dialog = new HotkeyDialog(sound.Hotkey, sound.ModifierKeys);
         if (dialog.ShowDialog() == DialogResult.OK)
         {
-            // Eski hotkey'i kaldır
             if (_registeredHotkeys.TryGetValue(sound.Id, out var oldId))
             {
                 _hotkeyService?.UnregisterHotkey(oldId);
@@ -550,7 +765,6 @@ public partial class MainForm : Form
             sound.Hotkey = dialog.SelectedKey;
             sound.ModifierKeys = dialog.SelectedModifiers;
 
-            // Yeni hotkey kaydet
             if (sound.Hotkey != Keys.None)
             {
                 RegisterHotkeyForSound(sound);
@@ -586,20 +800,18 @@ public partial class MainForm : Form
 
         var result = MessageBox.Show(
             $"'{sound.Name}' silinsin mi?",
-            "Silme Onayı",
+            "Silme Onayi",
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Question);
 
         if (result == DialogResult.Yes)
         {
-            // Hotkey kaldır
             if (_registeredHotkeys.TryGetValue(sound.Id, out var id))
             {
                 _hotkeyService?.UnregisterHotkey(id);
                 _registeredHotkeys.Remove(sound.Id);
             }
 
-            // Dosyayı sil
             try
             {
                 if (File.Exists(sound.LocalPath))
@@ -632,7 +844,7 @@ public partial class MainForm : Form
                 BeginInvoke(() =>
                 {
                     _audioService.PlaySound(sound.LocalPath, sound.Volume);
-                    _statusLabel.Text = $"Çalıyor: {sound.Name}";
+                    _statusLabel.Text = $"Caliniyor: {sound.Name}";
                 });
             }
         });
@@ -640,22 +852,6 @@ public partial class MainForm : Form
         if (id > 0)
         {
             _registeredHotkeys[sound.Id] = id;
-        }
-    }
-
-    private void VirtualCableCombo_SelectedIndexChanged(object? sender, EventArgs e)
-    {
-        if (_virtualCableCombo.SelectedItem is DeviceItem device)
-        {
-            _audioService.VirtualCableDeviceNumber = device.DeviceNumber;
-            _settings.VirtualCableDevice = device.Name;
-            SaveSettings();
-        }
-        else
-        {
-            _audioService.VirtualCableDeviceNumber = null;
-            _settings.VirtualCableDevice = null;
-            SaveSettings();
         }
     }
 
@@ -680,7 +876,6 @@ public partial class MainForm : Form
     }
 }
 
-// Yardımcı sınıflar
 public class DeviceItem
 {
     public int DeviceNumber { get; }

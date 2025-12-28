@@ -7,7 +7,10 @@ public class AppSettings
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "VoiceBoard", "Sounds");
     public string? VirtualCableDevice { get; set; }
+    public string? MicrophoneDevice { get; set; }
     public bool PlayToSpeakers { get; set; } = true;
     public bool PlayToVirtualCable { get; set; } = true;
+    public bool MicrophonePassthroughEnabled { get; set; } = true;
     public float MasterVolume { get; set; } = 1.0f;
+    public float MicrophoneVolume { get; set; } = 1.0f;
 }
