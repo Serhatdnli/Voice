@@ -111,8 +111,8 @@ end;
 procedure ConfigureAPOForMicrophone();
 var
   RegPath: String;
-  DeviceId: String;
   I: Integer;
+  DeviceState: Cardinal;
   Names: TArrayOfString;
 begin
   // Varsayilan mikrofonu bul ve APO'yu bagla
@@ -124,9 +124,9 @@ begin
       RegPath := 'SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Capture\' + Names[I];
 
       // Aktif cihaz mi kontrol et
-      if RegQueryDWordValue(HKEY_LOCAL_MACHINE, RegPath, 'DeviceState', I) then
+      if RegQueryDWordValue(HKEY_LOCAL_MACHINE, RegPath, 'DeviceState', DeviceState) then
       begin
-        if I = 1 then // Aktif
+        if DeviceState = 1 then // Aktif
         begin
           // FxProperties olustur ve APO'yu ata
           RegWriteStringValue(HKEY_LOCAL_MACHINE,
