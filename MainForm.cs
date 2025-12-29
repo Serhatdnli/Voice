@@ -96,44 +96,10 @@ public partial class MainForm : Form
             else UpdateStatus();
         };
 
-        // Auto-detect and setup virtual cable
-        SetupVirtualCableIfAvailable();
-
         InitializeComponent();
         BuildFullModeUI();
         BuildMiniModeUI();
         ShowFullMode();
-    }
-
-    private void SetupVirtualCableIfAvailable()
-    {
-        // Check for virtual cable devices
-        var virtualCables = _audioService.GetVirtualCableDevices();
-
-        if (virtualCables.Count > 0)
-        {
-            // Found a virtual cable - use it!
-            _audioService.VirtualCableDeviceNumber = virtualCables[0].DeviceNumber;
-            _audioService.OutputMode = AudioOutputMode.VirtualCable;
-            _audioService.PlayToVirtualCable = true;
-
-            // Setup microphone passthrough
-            var mics = _audioService.GetInputDevices();
-            if (mics.Count > 0)
-            {
-                _audioService.MicrophoneDeviceNumber = 0;
-                _audioService.MicrophonePassthroughEnabled = true;
-                _audioService.StartMicrophonePassthrough();
-            }
-
-            System.Diagnostics.Debug.WriteLine($"Virtual Cable found: {virtualCables[0].Name}");
-        }
-        else
-        {
-            // No virtual cable - speakers only
-            _audioService.OutputMode = AudioOutputMode.SpeakersOnly;
-            System.Diagnostics.Debug.WriteLine("No virtual cable found - speakers only mode");
-        }
     }
 
     private void InitializeComponent()
@@ -318,26 +284,14 @@ public partial class MainForm : Form
             AutoSize = true
         };
 
-        if (_audioService.OutputMode == AudioOutputMode.DirectSound && _audioService.IsDirectSoundAvailable)
+        if (_audioService.IsDirectSoundAvailable)
         {
             audioModeStatus.Text = "● DirectSound Aktif";
             audioModeStatus.ForeColor = _success;
         }
-        else if (_audioService.OutputMode == AudioOutputMode.VirtualCable)
-        {
-            var cables = _audioService.GetVirtualCableDevices();
-            var cableName = cables.Count > 0 ? cables[0].Name : "VB-Cable";
-            audioModeStatus.Text = $"● {cableName} Aktif";
-            audioModeStatus.ForeColor = _success;
-        }
-        else if (_audioService.OutputMode == AudioOutputMode.APO && _audioService.IsAPOInstalled)
-        {
-            audioModeStatus.Text = "● APO Aktif";
-            audioModeStatus.ForeColor = _success;
-        }
         else
         {
-            audioModeStatus.Text = "○ Sadece Hoparlor";
+            audioModeStatus.Text = "○ DirectSound bulunamadi";
             audioModeStatus.ForeColor = _warning;
         }
 
@@ -460,7 +414,7 @@ public partial class MainForm : Form
         miniSearchWrapper.Controls.Add(_miniSearchBox);
         miniSearchPanel.Controls.Add(miniSearchWrapper);
 
-        // Mini Sound List (shows 2 items)
+        // Mini Sound List
         _miniSoundList = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -591,7 +545,6 @@ public partial class MainForm : Form
     {
         base.OnDeactivate(e);
 
-        // Auto switch to mini mode when losing focus (only from full mode)
         if (_autoSwitchEnabled && !_isMiniMode && GetForegroundWindow() != Handle)
         {
             BeginInvoke(ShowMiniMode);
@@ -746,13 +699,11 @@ public partial class MainForm : Form
             }
         }
 
-        // Hover effect
         card.MouseEnter += (s, e) => card.BackColor = _bgCardHover;
         card.MouseLeave += (s, e) => card.BackColor = _bgCard;
         nameLabel.MouseEnter += (s, e) => card.BackColor = _bgCardHover;
         nameLabel.MouseLeave += (s, e) => card.BackColor = _bgCard;
 
-        // Double-click to play
         card.DoubleClick += async (s, e) => await PlaySoundAsync(name, url, item);
         nameLabel.DoubleClick += async (s, e) => await PlaySoundAsync(name, url, item);
 
@@ -896,27 +847,7 @@ public partial class MainForm : Form
         if (_currentlyPlaying != null)
             return $"▶ {_currentlyPlaying}";
 
-        string mode;
-        if (_audioService.OutputMode == AudioOutputMode.DirectSound)
-        {
-            mode = _audioService.IsDirectSoundAvailable ? "DirectSound ✓" : "DirectSound (yok)";
-        }
-        else if (_audioService.OutputMode == AudioOutputMode.APO)
-        {
-            if (_audioService.IsAPOInstalled)
-                mode = _audioService.IsAPOConnected ? "APO ✓" : "APO (baglaniyor)";
-            else
-                mode = "APO (kurulum gerekli)";
-        }
-        else if (_audioService.OutputMode == AudioOutputMode.VirtualCable)
-        {
-            mode = "VB-Cable";
-        }
-        else
-        {
-            mode = "Sadece Hoparlor";
-        }
-
+        var mode = _audioService.IsDirectSoundAvailable ? "DirectSound ✓" : "Hoparlor";
         return $"Hazir • {mode} • Ctrl+Shift+V";
     }
 
