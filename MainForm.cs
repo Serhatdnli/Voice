@@ -14,6 +14,8 @@ public partial class MainForm : Form
     private static extern bool ReleaseCapture();
     [DllImport("user32.dll")]
     private static extern int SendMessage(IntPtr hWnd, int Msg, int wParam, int lParam);
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
 
     private const int WM_HOTKEY = 0x0312;
     private const int WM_NCLBUTTONDOWN = 0xA1;
@@ -32,35 +34,43 @@ public partial class MainForm : Form
     private readonly Dictionary<int, SoundItem> _hotkeyMap = new();
     private int _nextHotkeyId = 1;
     private CancellationTokenSource? _searchCts;
+
+    // Mode tracking
     private bool _isMiniMode = false;
+    private bool _autoSwitchEnabled = true;
     private Size _normalSize;
     private Point _normalLocation;
 
-    // Modern UI Colors
-    private readonly Color _bgDark = Color.FromArgb(30, 30, 35);
-    private readonly Color _bgCard = Color.FromArgb(45, 45, 50);
-    private readonly Color _bgHover = Color.FromArgb(60, 60, 70);
+    // Colors - Modern Discord-like theme
+    private readonly Color _bgDark = Color.FromArgb(32, 34, 37);
+    private readonly Color _bgDarker = Color.FromArgb(24, 25, 28);
+    private readonly Color _bgCard = Color.FromArgb(47, 49, 54);
+    private readonly Color _bgCardHover = Color.FromArgb(64, 68, 75);
     private readonly Color _accent = Color.FromArgb(88, 101, 242);
     private readonly Color _accentHover = Color.FromArgb(71, 82, 196);
-    private readonly Color _textPrimary = Color.White;
-    private readonly Color _textSecondary = Color.FromArgb(180, 180, 180);
+    private readonly Color _textPrimary = Color.FromArgb(255, 255, 255);
+    private readonly Color _textSecondary = Color.FromArgb(185, 187, 190);
+    private readonly Color _textMuted = Color.FromArgb(114, 118, 125);
     private readonly Color _success = Color.FromArgb(87, 242, 135);
     private readonly Color _danger = Color.FromArgb(237, 66, 69);
+    private readonly Color _warning = Color.FromArgb(250, 168, 26);
 
-    // UI Controls
+    // UI Controls - Full Mode
+    private Panel _titleBar = null!;
+    private Panel _mainPanel = null!;
     private TextBox _searchBox = null!;
-    private FlowLayoutPanel _searchResults = null!;
+    private FlowLayoutPanel _resultsList = null!;
     private FlowLayoutPanel _favoritesList = null!;
     private Label _statusLabel = null!;
     private TrackBar _volumeSlider = null!;
-    private Label _volumeLabel = null!;
-    private CheckBox _alwaysOnTopCheck = null!;
-    private Button _miniModeBtn = null!;
-    private Panel _mainPanel = null!;
-    private Panel _miniBar = null!;
-    private Panel _titleBar = null!;
+    private CheckBox _autoSwitchCheck = null!;
     private TabControl _tabControl = null!;
-    private Label _miniStatusLabel = null!;
+
+    // UI Controls - Mini Mode
+    private Panel _miniPanel = null!;
+    private TextBox _miniSearchBox = null!;
+    private FlowLayoutPanel _miniFavorites = null!;
+    private Label _miniStatus = null!;
 
     public MainForm()
     {
@@ -71,248 +81,432 @@ public partial class MainForm : Form
 
         _audioService.OnSoundFinished += () =>
         {
-            if (InvokeRequired)
-                BeginInvoke(UpdatePlaybackStatus);
-            else
-                UpdatePlaybackStatus();
+            if (InvokeRequired) BeginInvoke(UpdateStatus);
+            else UpdateStatus();
         };
 
         InitializeComponent();
-        SetupModernUI();
+        BuildFullModeUI();
+        BuildMiniModeUI();
+        ShowFullMode();
     }
 
     private void InitializeComponent()
     {
         SuspendLayout();
         Text = "VoiceBoard";
-        Size = new Size(480, 650);
-        MinimumSize = new Size(400, 500);
+        Size = new Size(500, 600);
+        MinimumSize = new Size(450, 500);
         StartPosition = FormStartPosition.CenterScreen;
-        FormBorderStyle = FormBorderStyle.None; // Custom title bar
+        FormBorderStyle = FormBorderStyle.None;
         BackColor = _bgDark;
-        ForeColor = _textPrimary;
+        DoubleBuffered = true;
         ResumeLayout(false);
     }
 
-    private void SetupModernUI()
+    #region Full Mode UI
+
+    private void BuildFullModeUI()
     {
-        // Custom Title Bar
+        // Title Bar
         _titleBar = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 35,
-            BackColor = Color.FromArgb(20, 20, 25)
+            Height = 40,
+            BackColor = _bgDarker,
+            Padding = new Padding(12, 0, 8, 0)
         };
-        _titleBar.MouseDown += TitleBar_MouseDown;
+        _titleBar.MouseDown += DragWindow;
 
-        var titleIcon = new Label
-        {
-            Text = "🎵",
-            Font = new Font("Segoe UI", 12),
-            Location = new Point(10, 5),
-            AutoSize = true
-        };
-        titleIcon.MouseDown += TitleBar_MouseDown;
-
-        var titleText = new Label
+        var logo = new Label
         {
             Text = "VoiceBoard",
-            Font = new Font("Segoe UI", 10, FontStyle.Bold),
+            Font = new Font("Segoe UI Semibold", 11),
             ForeColor = _textPrimary,
-            Location = new Point(35, 8),
-            AutoSize = true
+            AutoSize = true,
+            Location = new Point(12, 10)
         };
-        titleText.MouseDown += TitleBar_MouseDown;
+        logo.MouseDown += DragWindow;
 
-        var minimizeBtn = CreateTitleButton("—", 390);
+        var minimizeBtn = CreateIconButton("—", _titleBar.Width - 90, 5);
         minimizeBtn.Click += (s, e) => WindowState = FormWindowState.Minimized;
+        minimizeBtn.Anchor = AnchorStyles.Top | AnchorStyles.Right;
 
-        var closeBtn = CreateTitleButton("✕", 430);
-        closeBtn.BackColor = _danger;
+        var miniBtn = CreateIconButton("▭", _titleBar.Width - 55, 5);
+        miniBtn.Click += (s, e) => ShowMiniMode();
+        miniBtn.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+
+        var closeBtn = CreateIconButton("✕", _titleBar.Width - 20, 5);
         closeBtn.Click += (s, e) => Close();
+        closeBtn.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        closeBtn.ForeColor = _danger;
 
-        _titleBar.Controls.AddRange(new Control[] { titleIcon, titleText, minimizeBtn, closeBtn });
+        _titleBar.Controls.AddRange(new Control[] { logo, minimizeBtn, miniBtn, closeBtn });
 
         // Main Panel
         _mainPanel = new Panel
         {
             Dock = DockStyle.Fill,
             BackColor = _bgDark,
-            Padding = new Padding(10, 5, 10, 10)
+            Padding = new Padding(16)
         };
 
-        // Header with controls
-        var header = new Panel { Dock = DockStyle.Top, Height = 40, BackColor = _bgDark };
-
-        _alwaysOnTopCheck = new CheckBox
+        // Search Section
+        var searchSection = new Panel
         {
-            Text = "Her Zaman Üstte",
-            Font = new Font("Segoe UI", 9),
-            ForeColor = _textSecondary,
-            Location = new Point(5, 10),
-            AutoSize = true
+            Dock = DockStyle.Top,
+            Height = 50,
+            BackColor = _bgDark
         };
-        _alwaysOnTopCheck.CheckedChanged += (s, e) => TopMost = _alwaysOnTopCheck.Checked;
-
-        _miniModeBtn = CreateButton("Mini Mod", 75, 28);
-        _miniModeBtn.Location = new Point(380, 6);
-        _miniModeBtn.Click += ToggleMiniMode;
-
-        header.Controls.AddRange(new Control[] { _alwaysOnTopCheck, _miniModeBtn });
-
-        // Search
-        var searchPanel = new Panel { Dock = DockStyle.Top, Height = 40, BackColor = _bgDark };
 
         _searchBox = new TextBox
         {
-            Location = new Point(5, 5),
-            Size = new Size(360, 28),
-            Font = new Font("Segoe UI", 10),
+            Location = new Point(0, 8),
+            Size = new Size(380, 32),
+            Font = new Font("Segoe UI", 11),
             BackColor = _bgCard,
             ForeColor = _textPrimary,
-            BorderStyle = BorderStyle.FixedSingle
+            BorderStyle = BorderStyle.None
         };
-        _searchBox.KeyDown += async (s, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; await SearchAsync(); } };
+        _searchBox.KeyDown += async (s, e) =>
+        {
+            if (e.KeyCode == Keys.Enter)
+            {
+                e.SuppressKeyPress = true;
+                await SearchAsync(_searchBox.Text);
+            }
+        };
 
-        var searchBtn = CreateButton("Ara", 70, 28);
-        searchBtn.Location = new Point(375, 4);
-        searchBtn.Click += async (s, e) => await SearchAsync();
+        // Wrap in panel for padding
+        var searchWrapper = new Panel
+        {
+            Location = new Point(0, 8),
+            Size = new Size(390, 34),
+            BackColor = _bgCard,
+            Padding = new Padding(10, 6, 10, 6)
+        };
+        _searchBox.Dock = DockStyle.Fill;
+        _searchBox.Location = Point.Empty;
+        _searchBox.Size = new Size(370, 22);
+        searchWrapper.Controls.Add(_searchBox);
 
-        searchPanel.Controls.AddRange(new Control[] { _searchBox, searchBtn });
+        var searchBtn = CreateButton("Ara", 70, 34);
+        searchBtn.Location = new Point(400, 8);
+        searchBtn.Click += async (s, e) => await SearchAsync(_searchBox.Text);
+
+        searchSection.Controls.AddRange(new Control[] { searchWrapper, searchBtn });
 
         // Tabs
         _tabControl = new TabControl
         {
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 9)
+            Font = new Font("Segoe UI", 10),
+            Padding = new Point(12, 6)
         };
 
-        var searchTab = new TabPage("Arama") { BackColor = _bgDark };
-        _searchResults = new FlowLayoutPanel
+        var resultsTab = new TabPage("Sonuclar") { BackColor = _bgDark, Padding = new Padding(0, 8, 0, 0) };
+        _resultsList = CreateSoundList();
+        resultsTab.Controls.Add(_resultsList);
+
+        var favoritesTab = new TabPage("Favoriler") { BackColor = _bgDark, Padding = new Padding(0, 8, 0, 0) };
+        _favoritesList = CreateSoundList();
+        favoritesTab.Controls.Add(_favoritesList);
+
+        _tabControl.TabPages.AddRange(new[] { resultsTab, favoritesTab });
+
+        // Bottom Panel
+        var bottomPanel = new Panel
         {
-            Dock = DockStyle.Fill,
-            AutoScroll = true,
-            FlowDirection = FlowDirection.TopDown,
-            WrapContents = false,
-            BackColor = _bgDark,
-            Padding = new Padding(0, 5, 0, 5)
+            Dock = DockStyle.Bottom,
+            Height = 85,
+            BackColor = _bgDarker,
+            Padding = new Padding(12, 8, 12, 8)
         };
-        searchTab.Controls.Add(_searchResults);
 
-        var favTab = new TabPage("Favoriler") { BackColor = _bgDark };
-        _favoritesList = new FlowLayoutPanel
+        // Volume Row
+        var volIcon = new Label
         {
-            Dock = DockStyle.Fill,
-            AutoScroll = true,
-            FlowDirection = FlowDirection.TopDown,
-            WrapContents = false,
-            BackColor = _bgDark,
-            Padding = new Padding(0, 5, 0, 5)
-        };
-        favTab.Controls.Add(_favoritesList);
-
-        _tabControl.TabPages.AddRange(new[] { searchTab, favTab });
-
-        // Bottom
-        var bottom = new Panel { Dock = DockStyle.Bottom, Height = 70, BackColor = _bgCard };
-
-        var volLabel = new Label
-        {
-            Text = "Ses:",
-            Font = new Font("Segoe UI", 9),
-            ForeColor = _textSecondary,
-            Location = new Point(10, 12),
+            Text = "🔊",
+            Font = new Font("Segoe UI", 10),
+            Location = new Point(12, 12),
             AutoSize = true
         };
 
         _volumeSlider = new TrackBar
         {
-            Location = new Point(45, 5),
-            Size = new Size(150, 30),
+            Location = new Point(45, 6),
+            Size = new Size(180, 30),
             Minimum = 0,
             Maximum = 100,
             Value = (int)(_settings.MasterVolume * 100),
-            TickFrequency = 10,
-            BackColor = _bgCard
+            TickStyle = TickStyle.None,
+            BackColor = _bgDarker
         };
         _volumeSlider.ValueChanged += (s, e) =>
         {
-            _volumeLabel.Text = $"{_volumeSlider.Value}%";
             _audioService.MasterVolume = _volumeSlider.Value / 100f;
             _settings.MasterVolume = _audioService.MasterVolume;
             _settingsService.Save(_settings);
         };
 
-        _volumeLabel = new Label
+        _autoSwitchCheck = new CheckBox
         {
-            Text = $"{_volumeSlider.Value}%",
-            Font = new Font("Segoe UI", 9, FontStyle.Bold),
-            ForeColor = _accent,
-            Location = new Point(200, 12),
-            AutoSize = true
+            Text = "Otomatik Mini Mod",
+            Font = new Font("Segoe UI", 9),
+            ForeColor = _textSecondary,
+            Location = new Point(240, 10),
+            AutoSize = true,
+            Checked = _autoSwitchEnabled
         };
+        _autoSwitchCheck.CheckedChanged += (s, e) => _autoSwitchEnabled = _autoSwitchCheck.Checked;
 
-        var stopBtn = CreateButton("Durdur", 70, 28);
-        stopBtn.Location = new Point(270, 8);
+        var stopBtn = CreateButton("Durdur", 75, 30);
+        stopBtn.Location = new Point(390, 8);
         stopBtn.BackColor = _danger;
-        stopBtn.Click += (s, e) => { _audioService.Stop(); UpdatePlaybackStatus(); };
+        stopBtn.Click += (s, e) => { _audioService.Stop(); UpdateStatus(); };
 
-        var trendBtn = CreateButton("Trend", 70, 28);
-        trendBtn.Location = new Point(350, 8);
-        trendBtn.BackColor = Color.FromArgb(255, 100, 100);
-        trendBtn.Click += async (s, e) => await LoadTrendingAsync();
-
+        // Status Row
         _statusLabel = new Label
         {
-            Text = "Hazir | Ctrl+Shift+V: Goster/Gizle",
-            Font = new Font("Segoe UI", 8),
-            ForeColor = _textSecondary,
-            Location = new Point(10, 45),
-            Size = new Size(420, 20)
+            Text = "Hazir • Ctrl+Shift+V ile goster/gizle",
+            Font = new Font("Segoe UI", 9),
+            ForeColor = _textMuted,
+            Location = new Point(12, 50),
+            Size = new Size(450, 25)
         };
 
-        bottom.Controls.AddRange(new Control[] { volLabel, _volumeSlider, _volumeLabel, stopBtn, trendBtn, _statusLabel });
+        bottomPanel.Controls.AddRange(new Control[] { volIcon, _volumeSlider, _autoSwitchCheck, stopBtn, _statusLabel });
 
         _mainPanel.Controls.Add(_tabControl);
-        _mainPanel.Controls.Add(searchPanel);
-        _mainPanel.Controls.Add(header);
-        _mainPanel.Controls.Add(bottom);
+        _mainPanel.Controls.Add(searchSection);
+        _mainPanel.Controls.Add(bottomPanel);
 
         Controls.Add(_mainPanel);
         Controls.Add(_titleBar);
 
-        // Load
+        // Load data
         LoadFavorites();
         _ = LoadTrendingAsync();
     }
 
-    private Button CreateTitleButton(string text, int x)
+    private FlowLayoutPanel CreateSoundList()
     {
-        var btn = new Button
+        return new FlowLayoutPanel
         {
-            Text = text,
-            Size = new Size(40, 30),
-            Location = new Point(x, 2),
+            Dock = DockStyle.Fill,
+            AutoScroll = true,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            BackColor = _bgDark,
+            Padding = new Padding(0)
+        };
+    }
+
+    #endregion
+
+    #region Mini Mode UI
+
+    private void BuildMiniModeUI()
+    {
+        _miniPanel = new Panel
+        {
+            Location = new Point(0, 0),
+            Size = new Size(320, 350),
+            BackColor = _bgDarker,
+            Visible = false
+        };
+        _miniPanel.MouseDown += DragWindow;
+
+        // Mini Header
+        var miniHeader = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = 35,
+            BackColor = _bgDarker
+        };
+        miniHeader.MouseDown += DragWindow;
+
+        var miniLogo = new Label
+        {
+            Text = "🎵 VoiceBoard",
+            Font = new Font("Segoe UI Semibold", 9),
+            ForeColor = _textPrimary,
+            Location = new Point(10, 9),
+            AutoSize = true
+        };
+        miniLogo.MouseDown += DragWindow;
+
+        var expandBtn = CreateIconButton("◱", 255, 5);
+        expandBtn.Click += (s, e) => ShowFullMode();
+
+        var miniCloseBtn = CreateIconButton("✕", 285, 5);
+        miniCloseBtn.ForeColor = _danger;
+        miniCloseBtn.Click += (s, e) => Close();
+
+        miniHeader.Controls.AddRange(new Control[] { miniLogo, expandBtn, miniCloseBtn });
+
+        // Mini Search
+        var miniSearchPanel = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = 40,
+            BackColor = _bgDarker,
+            Padding = new Padding(8, 4, 8, 4)
+        };
+
+        _miniSearchBox = new TextBox
+        {
+            Dock = DockStyle.Fill,
+            Font = new Font("Segoe UI", 9),
+            BackColor = _bgCard,
+            ForeColor = _textPrimary,
+            BorderStyle = BorderStyle.None
+        };
+        _miniSearchBox.KeyDown += async (s, e) =>
+        {
+            if (e.KeyCode == Keys.Enter)
+            {
+                e.SuppressKeyPress = true;
+                await SearchAsync(_miniSearchBox.Text);
+            }
+        };
+
+        var miniSearchWrapper = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = _bgCard,
+            Padding = new Padding(8, 5, 8, 5)
+        };
+        _miniSearchBox.Dock = DockStyle.Fill;
+        miniSearchWrapper.Controls.Add(_miniSearchBox);
+        miniSearchPanel.Controls.Add(miniSearchWrapper);
+
+        // Mini Favorites
+        _miniFavorites = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            AutoScroll = true,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            BackColor = _bgDark,
+            Padding = new Padding(4)
+        };
+
+        // Mini Bottom
+        var miniBottom = new Panel
+        {
+            Dock = DockStyle.Bottom,
+            Height = 45,
+            BackColor = _bgDarker,
+            Padding = new Padding(8)
+        };
+
+        _miniStatus = new Label
+        {
+            Text = "Hazir",
+            Font = new Font("Segoe UI", 8),
+            ForeColor = _textMuted,
+            Location = new Point(8, 14),
+            Size = new Size(180, 20)
+        };
+
+        var miniStopBtn = new Button
+        {
+            Text = "■",
+            Size = new Size(35, 28),
+            Location = new Point(200, 8),
             FlatStyle = FlatStyle.Flat,
-            BackColor = Color.Transparent,
+            BackColor = _danger,
             ForeColor = _textPrimary,
             Font = new Font("Segoe UI", 10),
             Cursor = Cursors.Hand
         };
-        btn.FlatAppearance.BorderSize = 0;
-        btn.MouseEnter += (s, e) => btn.BackColor = _bgHover;
-        btn.MouseLeave += (s, e) => btn.BackColor = Color.Transparent;
-        return btn;
+        miniStopBtn.FlatAppearance.BorderSize = 0;
+        miniStopBtn.Click += (s, e) => { _audioService.Stop(); UpdateStatus(); };
+
+        var miniVolBtn = new Button
+        {
+            Text = "🔊",
+            Size = new Size(35, 28),
+            Location = new Point(240, 8),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = _bgCard,
+            ForeColor = _textPrimary,
+            Font = new Font("Segoe UI", 9),
+            Cursor = Cursors.Hand
+        };
+        miniVolBtn.FlatAppearance.BorderSize = 0;
+        miniVolBtn.Click += (s, e) => ShowVolumePopup();
+
+        miniBottom.Controls.AddRange(new Control[] { _miniStatus, miniStopBtn, miniVolBtn });
+
+        _miniPanel.Controls.Add(_miniFavorites);
+        _miniPanel.Controls.Add(miniSearchPanel);
+        _miniPanel.Controls.Add(miniBottom);
+        _miniPanel.Controls.Add(miniHeader);
+
+        Controls.Add(_miniPanel);
     }
 
-    private void TitleBar_MouseDown(object? sender, MouseEventArgs e)
+    #endregion
+
+    #region Mode Switching
+
+    private void ShowFullMode()
     {
-        if (e.Button == MouseButtons.Left)
+        if (!_isMiniMode) return;
+
+        _miniPanel.Visible = false;
+        _mainPanel.Visible = true;
+        _titleBar.Visible = true;
+
+        Size = _normalSize.IsEmpty ? new Size(500, 600) : _normalSize;
+        if (!_normalLocation.IsEmpty) Location = _normalLocation;
+
+        MinimumSize = new Size(450, 500);
+        TopMost = false;
+        Opacity = 1.0;
+
+        _isMiniMode = false;
+        LoadFavorites();
+    }
+
+    private void ShowMiniMode()
+    {
+        if (_isMiniMode) return;
+
+        _normalSize = Size;
+        _normalLocation = Location;
+
+        _mainPanel.Visible = false;
+        _titleBar.Visible = false;
+        _miniPanel.Visible = true;
+
+        MinimumSize = Size.Empty;
+        Size = new Size(320, 350);
+        Location = new Point(Screen.PrimaryScreen!.WorkingArea.Width - 340, 20);
+        TopMost = true;
+        Opacity = 0.97;
+
+        _isMiniMode = true;
+        _miniPanel.BringToFront();
+        LoadMiniFavorites();
+    }
+
+    protected override void OnDeactivate(EventArgs e)
+    {
+        base.OnDeactivate(e);
+
+        // Auto switch to mini mode when losing focus (only from full mode)
+        if (_autoSwitchEnabled && !_isMiniMode && GetForegroundWindow() != Handle)
         {
-            ReleaseCapture();
-            SendMessage(Handle, WM_NCLBUTTONDOWN, HT_CAPTION, 0);
+            BeginInvoke(ShowMiniMode);
         }
     }
+
+    #endregion
+
+    #region UI Helpers
 
     private Button CreateButton(string text, int w, int h)
     {
@@ -323,99 +517,219 @@ public partial class MainForm : Form
             FlatStyle = FlatStyle.Flat,
             BackColor = _accent,
             ForeColor = _textPrimary,
-            Font = new Font("Segoe UI", 9, FontStyle.Bold),
+            Font = new Font("Segoe UI Semibold", 9),
             Cursor = Cursors.Hand
         };
         btn.FlatAppearance.BorderSize = 0;
-        btn.MouseEnter += (s, e) => { if (btn.BackColor == _accent) btn.BackColor = _accentHover; };
-        btn.MouseLeave += (s, e) => { if (btn.BackColor == _accentHover) btn.BackColor = _accent; };
+        btn.MouseEnter += (s, e) => btn.BackColor = _accentHover;
+        btn.MouseLeave += (s, e) => btn.BackColor = _accent;
         return btn;
     }
 
-    private Panel CreateSoundCard(string name, string url, bool isFav, SoundItem? item = null)
+    private Button CreateIconButton(string text, int x, int y)
     {
+        var btn = new Button
+        {
+            Text = text,
+            Size = new Size(30, 28),
+            Location = new Point(x, y),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.Transparent,
+            ForeColor = _textSecondary,
+            Font = new Font("Segoe UI", 10),
+            Cursor = Cursors.Hand
+        };
+        btn.FlatAppearance.BorderSize = 0;
+        btn.FlatAppearance.MouseOverBackColor = _bgCardHover;
+        return btn;
+    }
+
+    private Panel CreateSoundCard(string name, string url, bool isFavorite, SoundItem? item = null, bool mini = false)
+    {
+        var width = mini ? 295 : 440;
         var card = new Panel
         {
-            Size = new Size(430, 45),
+            Size = new Size(width, mini ? 38 : 48),
             BackColor = _bgCard,
-            Margin = new Padding(0, 2, 0, 2),
+            Margin = new Padding(0, 3, 0, 3),
+            Cursor = Cursors.Hand,
             Tag = item ?? new SoundItem { Name = name, SourceUrl = url }
         };
 
-        var lbl = new Label
+        var displayName = name.Length > (mini ? 18 : 28) ? name[..(mini ? 15 : 25)] + "..." : name;
+        var nameLabel = new Label
         {
-            Text = name.Length > 28 ? name[..25] + "..." : name,
-            Font = new Font("Segoe UI", 9),
+            Text = displayName,
+            Font = new Font("Segoe UI", mini ? 9 : 10),
             ForeColor = _textPrimary,
-            Location = new Point(8, 5),
-            Size = new Size(175, 18)
-        };
-
-        var hkLbl = new Label
-        {
-            Text = item?.HotkeyDisplayText ?? "",
-            Font = new Font("Segoe UI", 7),
-            ForeColor = _textSecondary,
-            Location = new Point(8, 25),
+            Location = new Point(10, mini ? 10 : 8),
             AutoSize = true
         };
 
-        var playBtn = CreateButton("▶", 35, 30);
-        playBtn.Location = new Point(190, 7);
-        playBtn.Click += async (s, e) => await PlayAsync(name, url, item);
-
-        var favBtn = CreateButton(isFav ? "−" : "+", 30, 30);
-        favBtn.Location = new Point(230, 7);
-        favBtn.BackColor = isFav ? _danger : _success;
-        favBtn.Click += (s, e) =>
+        Label? hotkeyLabel = null;
+        if (!mini && item?.Hotkey != Keys.None)
         {
-            if (isFav) RemoveFavorite(item!);
-            else AddFavorite(name, url);
-        };
-
-        Button? hkBtn = null;
-        Button? volBtn = null;
-
-        if (isFav)
-        {
-            hkBtn = CreateButton("⌨", 35, 30);
-            hkBtn.Location = new Point(265, 7);
-            hkBtn.BackColor = _bgHover;
-            hkBtn.Click += (s, e) => SetHotkey(item!, hkLbl);
-
-            volBtn = CreateButton("🔊", 35, 30);
-            volBtn.Location = new Point(305, 7);
-            volBtn.BackColor = _bgHover;
-            volBtn.Click += (s, e) => SetVolume(item!);
+            hotkeyLabel = new Label
+            {
+                Text = item.HotkeyDisplayText,
+                Font = new Font("Segoe UI", 8),
+                ForeColor = _textMuted,
+                Location = new Point(10, 28),
+                AutoSize = true
+            };
         }
 
-        // Hover
-        card.MouseEnter += (s, e) => card.BackColor = _bgHover;
-        card.MouseLeave += (s, e) => card.BackColor = _bgCard;
-        lbl.MouseEnter += (s, e) => card.BackColor = _bgHover;
-        lbl.MouseLeave += (s, e) => card.BackColor = _bgCard;
+        var playBtn = new Button
+        {
+            Text = "▶",
+            Size = new Size(mini ? 32 : 38, mini ? 28 : 34),
+            Location = new Point(width - (mini ? 45 : 130), mini ? 5 : 7),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = _success,
+            ForeColor = _bgDark,
+            Font = new Font("Segoe UI", mini ? 9 : 10),
+            Cursor = Cursors.Hand
+        };
+        playBtn.FlatAppearance.BorderSize = 0;
+        playBtn.Click += async (s, e) => await PlaySoundAsync(name, url, item);
 
-        // Double click to play
-        card.DoubleClick += async (s, e) => await PlayAsync(name, url, item);
-        lbl.DoubleClick += async (s, e) => await PlayAsync(name, url, item);
-
-        card.Controls.Add(lbl);
-        card.Controls.Add(hkLbl);
+        card.Controls.Add(nameLabel);
         card.Controls.Add(playBtn);
-        card.Controls.Add(favBtn);
-        if (hkBtn != null) card.Controls.Add(hkBtn);
-        if (volBtn != null) card.Controls.Add(volBtn);
+        if (hotkeyLabel != null) card.Controls.Add(hotkeyLabel);
+
+        if (!mini)
+        {
+            if (isFavorite)
+            {
+                var removeBtn = new Button
+                {
+                    Text = "−",
+                    Size = new Size(38, 34),
+                    Location = new Point(width - 85, 7),
+                    FlatStyle = FlatStyle.Flat,
+                    BackColor = _danger,
+                    ForeColor = _textPrimary,
+                    Font = new Font("Segoe UI", 12),
+                    Cursor = Cursors.Hand
+                };
+                removeBtn.FlatAppearance.BorderSize = 0;
+                removeBtn.Click += (s, e) => RemoveFavorite(item!);
+
+                var hotkeyBtn = new Button
+                {
+                    Text = "⌨",
+                    Size = new Size(38, 34),
+                    Location = new Point(width - 45, 7),
+                    FlatStyle = FlatStyle.Flat,
+                    BackColor = _bgCardHover,
+                    ForeColor = _textPrimary,
+                    Font = new Font("Segoe UI", 10),
+                    Cursor = Cursors.Hand
+                };
+                hotkeyBtn.FlatAppearance.BorderSize = 0;
+                hotkeyBtn.Click += (s, e) => SetHotkey(item!);
+
+                card.Controls.AddRange(new Control[] { removeBtn, hotkeyBtn });
+            }
+            else
+            {
+                var addBtn = new Button
+                {
+                    Text = "+",
+                    Size = new Size(38, 34),
+                    Location = new Point(width - 85, 7),
+                    FlatStyle = FlatStyle.Flat,
+                    BackColor = _success,
+                    ForeColor = _bgDark,
+                    Font = new Font("Segoe UI", 12),
+                    Cursor = Cursors.Hand
+                };
+                addBtn.FlatAppearance.BorderSize = 0;
+                addBtn.Click += (s, e) => AddFavorite(name, url);
+                card.Controls.Add(addBtn);
+            }
+        }
+
+        // Hover effect
+        card.MouseEnter += (s, e) => card.BackColor = _bgCardHover;
+        card.MouseLeave += (s, e) => card.BackColor = _bgCard;
+        nameLabel.MouseEnter += (s, e) => card.BackColor = _bgCardHover;
+        nameLabel.MouseLeave += (s, e) => card.BackColor = _bgCard;
+
+        // Double-click to play
+        card.DoubleClick += async (s, e) => await PlaySoundAsync(name, url, item);
+        nameLabel.DoubleClick += async (s, e) => await PlaySoundAsync(name, url, item);
 
         return card;
     }
 
-    private async Task PlayAsync(string name, string url, SoundItem? item = null)
+    private void DragWindow(object? sender, MouseEventArgs e)
+    {
+        if (e.Button == MouseButtons.Left)
+        {
+            ReleaseCapture();
+            SendMessage(Handle, WM_NCLBUTTONDOWN, HT_CAPTION, 0);
+        }
+    }
+
+    #endregion
+
+    #region Sound Operations
+
+    private async Task SearchAsync(string query)
+    {
+        query = query.Trim();
+        if (string.IsNullOrEmpty(query)) return;
+
+        _searchCts?.Cancel();
+        _searchCts = new CancellationTokenSource();
+
+        SetStatus("Araniyor...", _warning);
+        _resultsList.Controls.Clear();
+
+        try
+        {
+            var results = await _myInstantsService.SearchAsync(query, _searchCts.Token);
+
+            foreach (var r in results.Take(50))
+                _resultsList.Controls.Add(CreateSoundCard(r.Title, r.SoundUrl, false));
+
+            SetStatus($"{results.Count} sonuc bulundu", _success);
+
+            if (!_isMiniMode)
+                _tabControl.SelectedIndex = 0;
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Hata: {ex.Message}", _danger);
+        }
+    }
+
+    private async Task LoadTrendingAsync()
+    {
+        SetStatus("Trend yuklenyor...", _warning);
+
+        try
+        {
+            var results = await _myInstantsService.GetTrendingAsync();
+
+            _resultsList.Controls.Clear();
+            foreach (var r in results)
+                _resultsList.Controls.Add(CreateSoundCard(r.Title, r.SoundUrl, false));
+
+            SetStatus($"{results.Count} trend ses yuklendi", _textMuted);
+        }
+        catch
+        {
+            SetStatus("Trend yuklenemedi", _danger);
+        }
+    }
+
+    private async Task PlaySoundAsync(string name, string url, SoundItem? item = null)
     {
         try
         {
-            _statusLabel.Text = $"Caliniyor: {name}";
-            _statusLabel.ForeColor = _success;
-            if (_miniStatusLabel != null) _miniStatusLabel.Text = $"▶ {name}";
+            SetStatus($"▶ {name}", _success);
 
             string path;
             if (item?.IsDownloaded == true)
@@ -424,84 +738,62 @@ public partial class MainForm : Form
             }
             else
             {
+                SetStatus($"Indiriliyor: {name}", _warning);
                 path = Path.Combine(Path.GetTempPath(), $"vb_{Guid.NewGuid()}.mp3");
-                _statusLabel.Text = $"Indiriliyor: {name}";
                 await _myInstantsService.DownloadSoundAsync(url, path);
-                _statusLabel.Text = $"Caliniyor: {name}";
+                SetStatus($"▶ {name}", _success);
             }
 
             _audioService.PlaySound(path, item?.Volume ?? 1.0f);
         }
         catch (Exception ex)
         {
-            _statusLabel.Text = $"Hata: {ex.Message}";
-            _statusLabel.ForeColor = _danger;
+            SetStatus($"Hata: {ex.Message}", _danger);
         }
     }
 
-    private void UpdatePlaybackStatus()
+    private void SetStatus(string text, Color color)
+    {
+        _statusLabel.Text = text;
+        _statusLabel.ForeColor = color;
+        if (_miniStatus != null)
+        {
+            _miniStatus.Text = text.Length > 25 ? text[..22] + "..." : text;
+            _miniStatus.ForeColor = color;
+        }
+    }
+
+    private void UpdateStatus()
     {
         if (!_audioService.IsPlaying)
+            SetStatus("Hazir", _textMuted);
+    }
+
+    #endregion
+
+    #region Favorites
+
+    private void LoadFavorites()
+    {
+        _favoritesList.Controls.Clear();
+        foreach (var item in _settings.Sounds)
         {
-            _statusLabel.Text = "Hazir | Ctrl+Shift+V: Goster/Gizle";
-            _statusLabel.ForeColor = _textSecondary;
-            if (_miniStatusLabel != null) _miniStatusLabel.Text = "Hazir";
+            _favoritesList.Controls.Add(CreateSoundCard(item.Name, item.SourceUrl, true, item));
+            if (item.Hotkey != Keys.None) RegisterItemHotkey(item);
         }
     }
 
-    private async Task SearchAsync()
+    private void LoadMiniFavorites()
     {
-        var q = _searchBox.Text.Trim();
-        if (string.IsNullOrEmpty(q)) return;
-
-        _searchCts?.Cancel();
-        _searchCts = new CancellationTokenSource();
-
-        _statusLabel.Text = "Araniyor...";
-        _searchResults.Controls.Clear();
-
-        try
-        {
-            var results = await _myInstantsService.SearchAsync(q, _searchCts.Token);
-            foreach (var r in results.Take(50))
-                _searchResults.Controls.Add(CreateSoundCard(r.Title, r.SoundUrl, false));
-
-            _statusLabel.Text = $"{results.Count} sonuc";
-            _statusLabel.ForeColor = _textSecondary;
-            _tabControl.SelectedIndex = 0;
-        }
-        catch (Exception ex)
-        {
-            _statusLabel.Text = $"Hata: {ex.Message}";
-            _statusLabel.ForeColor = _danger;
-        }
-    }
-
-    private async Task LoadTrendingAsync()
-    {
-        _statusLabel.Text = "Trend yukleniyor...";
-        _searchResults.Controls.Clear();
-
-        try
-        {
-            var results = await _myInstantsService.GetTrendingAsync();
-            foreach (var r in results)
-                _searchResults.Controls.Add(CreateSoundCard(r.Title, r.SoundUrl, false));
-
-            _statusLabel.Text = $"{results.Count} trend ses";
-            _statusLabel.ForeColor = _textSecondary;
-            _tabControl.SelectedIndex = 0;
-        }
-        catch (Exception ex)
-        {
-            _statusLabel.Text = $"Trend yuklenemedi: {ex.Message}";
-        }
+        _miniFavorites.Controls.Clear();
+        foreach (var item in _settings.Sounds)
+            _miniFavorites.Controls.Add(CreateSoundCard(item.Name, item.SourceUrl, true, item, mini: true));
     }
 
     private void AddFavorite(string name, string url)
     {
-        var safe = string.Join("_", name.Split(Path.GetInvalidFileNameChars()));
-        var path = Path.Combine(_settings.SoundsFolder, $"{safe}.mp3");
+        var safeName = string.Join("_", name.Split(Path.GetInvalidFileNameChars()));
+        var path = Path.Combine(_settings.SoundsFolder, $"{safeName}.mp3");
 
         var item = new SoundItem { Name = name, SourceUrl = url, LocalPath = path };
         _settings.Sounds.Add(item);
@@ -514,7 +806,8 @@ public partial class MainForm : Form
         });
 
         LoadFavorites();
-        _statusLabel.Text = $"'{name}' eklendi";
+        if (_isMiniMode) LoadMiniFavorites();
+        SetStatus($"'{name}' favorilere eklendi", _success);
     }
 
     private void RemoveFavorite(SoundItem item)
@@ -523,48 +816,44 @@ public partial class MainForm : Form
         _settings.Sounds.Remove(item);
         _settingsService.Save(_settings);
         try { if (File.Exists(item.LocalPath)) File.Delete(item.LocalPath); } catch { }
+
         LoadFavorites();
-        _statusLabel.Text = $"'{item.Name}' silindi";
+        if (_isMiniMode) LoadMiniFavorites();
+        SetStatus($"'{item.Name}' silindi", _textMuted);
     }
 
-    private void LoadFavorites()
-    {
-        _favoritesList.Controls.Clear();
-        foreach (var item in _settings.Sounds)
-        {
-            _favoritesList.Controls.Add(CreateSoundCard(item.Name, item.SourceUrl, true, item));
-            if (item.Hotkey != Keys.None) RegisterItemHotkey(item);
-        }
-    }
-
-    private void SetHotkey(SoundItem item, Label lbl)
+    private void SetHotkey(SoundItem item)
     {
         using var dlg = new ModernHotkeyDialog(item.Hotkey, item.ModifierKeys);
-        dlg.TopMost = true; // Always on top for hotkey capture
-        if (dlg.ShowDialog() == DialogResult.OK)
+        dlg.TopMost = true;
+        if (dlg.ShowDialog(this) == DialogResult.OK)
         {
             UnregisterItemHotkey(item);
             item.Hotkey = dlg.SelectedKey;
             item.ModifierKeys = dlg.SelectedModifiers;
             _settingsService.Save(_settings);
             if (item.Hotkey != Keys.None) RegisterItemHotkey(item);
-            lbl.Text = item.HotkeyDisplayText;
-            _statusLabel.Text = $"Kisayol: {item.HotkeyDisplayText}";
-            LoadFavorites(); // Refresh
+            LoadFavorites();
+            SetStatus($"Kisayol atandi: {item.HotkeyDisplayText}", _success);
         }
     }
 
-    private void SetVolume(SoundItem item)
+    private void ShowVolumePopup()
     {
-        using var dlg = new ModernVolumeDialog(item.Volume);
-        dlg.TopMost = TopMost;
-        if (dlg.ShowDialog() == DialogResult.OK)
+        using var dlg = new ModernVolumeDialog(_audioService.MasterVolume);
+        dlg.TopMost = true;
+        if (dlg.ShowDialog(this) == DialogResult.OK)
         {
-            item.Volume = dlg.SelectedVolume;
+            _audioService.MasterVolume = dlg.SelectedVolume;
+            _settings.MasterVolume = dlg.SelectedVolume;
+            _volumeSlider.Value = (int)(dlg.SelectedVolume * 100);
             _settingsService.Save(_settings);
-            _statusLabel.Text = $"Ses: {(int)(item.Volume * 100)}%";
         }
     }
+
+    #endregion
+
+    #region Hotkeys
 
     private void RegisterItemHotkey(SoundItem item)
     {
@@ -585,108 +874,6 @@ public partial class MainForm : Form
         {
             UnregisterHotKey(Handle, entry.Key);
             _hotkeyMap.Remove(entry.Key);
-        }
-    }
-
-    private void ToggleMiniMode(object? s, EventArgs e)
-    {
-        if (!_isMiniMode)
-        {
-            _normalSize = Size;
-            _normalLocation = Location;
-
-            // Hide main content
-            _mainPanel.Visible = false;
-            _titleBar.Visible = false;
-
-            // Set mini window size
-            FormBorderStyle = FormBorderStyle.None;
-            Size = new Size(200, 60);
-            TopMost = true;
-            Opacity = 0.95;
-            Location = new Point(Screen.PrimaryScreen!.WorkingArea.Width - 210, 10);
-
-            // Create mini bar with explicit bounds (not Dock.Fill to avoid conflicts)
-            _miniBar = new Panel
-            {
-                Location = new Point(0, 0),
-                Size = new Size(200, 60),
-                BackColor = _bgCard
-            };
-            _miniBar.MouseDown += MiniBar_MouseDown;
-
-            var miniTitle = new Label
-            {
-                Text = "🎵 VoiceBoard",
-                Font = new Font("Segoe UI", 9, FontStyle.Bold),
-                ForeColor = _textPrimary,
-                Location = new Point(8, 5),
-                AutoSize = true
-            };
-            miniTitle.MouseDown += MiniBar_MouseDown;
-
-            _miniStatusLabel = new Label
-            {
-                Text = _audioService.IsPlaying ? "Caliniyor..." : "Hazir",
-                Font = new Font("Segoe UI", 8),
-                ForeColor = _textSecondary,
-                Location = new Point(8, 28),
-                Size = new Size(115, 20)
-            };
-            _miniStatusLabel.MouseDown += MiniBar_MouseDown;
-
-            var expandBtn = CreateButton("◱", 35, 25);
-            expandBtn.Location = new Point(125, 5);
-            expandBtn.BackColor = _accent;
-            expandBtn.Font = new Font("Segoe UI", 10);
-            expandBtn.Click += ToggleMiniMode;
-
-            var stopBtn = CreateButton("■", 35, 25);
-            stopBtn.Location = new Point(162, 5);
-            stopBtn.BackColor = _danger;
-            stopBtn.Click += (s, e) => { _audioService.Stop(); UpdatePlaybackStatus(); };
-
-            // Add controls to mini bar
-            _miniBar.Controls.Add(miniTitle);
-            _miniBar.Controls.Add(_miniStatusLabel);
-            _miniBar.Controls.Add(expandBtn);
-            _miniBar.Controls.Add(stopBtn);
-
-            // Add mini bar to form and bring to front
-            Controls.Add(_miniBar);
-            _miniBar.BringToFront();
-
-            _isMiniMode = true;
-        }
-        else
-        {
-            // Remove and dispose mini bar
-            Controls.Remove(_miniBar);
-            _miniBar?.Dispose();
-            _miniBar = null!;
-            _miniStatusLabel = null;
-
-            // Restore normal mode
-            FormBorderStyle = FormBorderStyle.None;
-            Size = _normalSize;
-            Location = _normalLocation;
-            TopMost = _alwaysOnTopCheck.Checked;
-            Opacity = 1.0;
-
-            // Show main content
-            _mainPanel.Visible = true;
-            _titleBar.Visible = true;
-
-            _isMiniMode = false;
-        }
-    }
-
-    private void MiniBar_MouseDown(object? sender, MouseEventArgs e)
-    {
-        if (e.Button == MouseButtons.Left)
-        {
-            ReleaseCapture();
-            SendMessage(Handle, WM_NCLBUTTONDOWN, HT_CAPTION, 0);
         }
     }
 
@@ -716,7 +903,7 @@ public partial class MainForm : Form
             }
             else if (_hotkeyMap.TryGetValue(id, out var item))
             {
-                _ = PlayAsync(item.Name, item.SourceUrl, item);
+                _ = PlaySoundAsync(item.Name, item.SourceUrl, item);
             }
         }
         base.WndProc(ref m);
@@ -729,91 +916,89 @@ public partial class MainForm : Form
         _audioService.Dispose();
         base.OnFormClosing(e);
     }
+
+    #endregion
 }
 
 // Modern Hotkey Dialog
 public class ModernHotkeyDialog : Form
 {
-    private readonly Color _bgDark = Color.FromArgb(30, 30, 35);
-    private readonly Color _bgCard = Color.FromArgb(45, 45, 50);
+    private readonly Color _bgDark = Color.FromArgb(32, 34, 37);
+    private readonly Color _bgCard = Color.FromArgb(47, 49, 54);
     private readonly Color _accent = Color.FromArgb(88, 101, 242);
     private readonly Color _textPrimary = Color.White;
-    private readonly Color _textSecondary = Color.FromArgb(180, 180, 180);
+    private readonly Color _textMuted = Color.FromArgb(114, 118, 125);
 
     public Keys SelectedKey { get; private set; }
     public Keys SelectedModifiers { get; private set; }
-    private Label _hotkeyLabel = null!;
+    private Label _display = null!;
 
-    public ModernHotkeyDialog(Keys currentKey, Keys currentModifiers)
+    public ModernHotkeyDialog(Keys key, Keys modifiers)
     {
-        SelectedKey = currentKey;
-        SelectedModifiers = currentModifiers;
-        SetupUI();
+        SelectedKey = key;
+        SelectedModifiers = modifiers;
+        BuildUI();
     }
 
-    private void SetupUI()
+    private void BuildUI()
     {
-        Text = "Kisayol Ata";
-        Size = new Size(320, 180);
+        Size = new Size(300, 160);
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.CenterParent;
         BackColor = _bgDark;
-        ForeColor = _textPrimary;
         KeyPreview = true;
 
-        var titleBar = new Panel { Dock = DockStyle.Top, Height = 35, BackColor = Color.FromArgb(20, 20, 25) };
         var title = new Label
         {
-            Text = "⌨ Kisayol Ata",
-            Font = new Font("Segoe UI", 10, FontStyle.Bold),
+            Text = "Kisayol Ata",
+            Font = new Font("Segoe UI Semibold", 11),
             ForeColor = _textPrimary,
-            Location = new Point(10, 8),
+            Location = new Point(20, 15),
             AutoSize = true
         };
-        titleBar.Controls.Add(title);
 
-        var instruction = new Label
+        var hint = new Label
         {
             Text = "Yeni kisayol tusuna basin:",
             Font = new Font("Segoe UI", 9),
-            ForeColor = _textSecondary,
-            Location = new Point(20, 50),
+            ForeColor = _textMuted,
+            Location = new Point(20, 45),
             AutoSize = true
         };
 
-        _hotkeyLabel = new Label
+        _display = new Label
         {
-            Text = GetHotkeyText(),
-            Font = new Font("Segoe UI", 14, FontStyle.Bold),
+            Text = GetDisplayText(),
+            Font = new Font("Segoe UI Semibold", 12),
             ForeColor = _accent,
-            Location = new Point(20, 80),
-            Size = new Size(280, 30),
-            TextAlign = ContentAlignment.MiddleCenter,
-            BackColor = _bgCard
+            BackColor = _bgCard,
+            Size = new Size(260, 35),
+            Location = new Point(20, 70),
+            TextAlign = ContentAlignment.MiddleCenter
         };
 
         var clearBtn = new Button
         {
             Text = "Temizle",
-            Size = new Size(80, 30),
-            Location = new Point(20, 125),
+            Size = new Size(75, 30),
+            Location = new Point(20, 115),
             FlatStyle = FlatStyle.Flat,
             BackColor = _bgCard,
             ForeColor = _textPrimary,
             Font = new Font("Segoe UI", 9)
         };
         clearBtn.FlatAppearance.BorderSize = 0;
-        clearBtn.Click += (s, e) => { SelectedKey = Keys.None; SelectedModifiers = Keys.None; UpdateLabel(); };
+        clearBtn.Click += (s, e) => { SelectedKey = Keys.None; SelectedModifiers = Keys.None; UpdateDisplay(); };
 
         var okBtn = new Button
         {
             Text = "Tamam",
-            Size = new Size(80, 30),
-            Location = new Point(120, 125),
+            Size = new Size(75, 30),
+            Location = new Point(115, 115),
             FlatStyle = FlatStyle.Flat,
             BackColor = _accent,
             ForeColor = _textPrimary,
-            Font = new Font("Segoe UI", 9, FontStyle.Bold),
+            Font = new Font("Segoe UI Semibold", 9),
             DialogResult = DialogResult.OK
         };
         okBtn.FlatAppearance.BorderSize = 0;
@@ -821,8 +1006,8 @@ public class ModernHotkeyDialog : Form
         var cancelBtn = new Button
         {
             Text = "Iptal",
-            Size = new Size(80, 30),
-            Location = new Point(220, 125),
+            Size = new Size(75, 30),
+            Location = new Point(205, 115),
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.FromArgb(237, 66, 69),
             ForeColor = _textPrimary,
@@ -831,7 +1016,7 @@ public class ModernHotkeyDialog : Form
         };
         cancelBtn.FlatAppearance.BorderSize = 0;
 
-        Controls.AddRange(new Control[] { titleBar, instruction, _hotkeyLabel, clearBtn, okBtn, cancelBtn });
+        Controls.AddRange(new Control[] { title, hint, _display, clearBtn, okBtn, cancelBtn });
         AcceptButton = okBtn;
         CancelButton = cancelBtn;
     }
@@ -851,13 +1036,13 @@ public class ModernHotkeyDialog : Form
         if (e.Alt) SelectedModifiers |= Keys.Alt;
         if (e.Shift) SelectedModifiers |= Keys.Shift;
 
-        UpdateLabel();
+        UpdateDisplay();
         base.OnKeyDown(e);
     }
 
-    private void UpdateLabel() => _hotkeyLabel.Text = GetHotkeyText();
+    private void UpdateDisplay() => _display.Text = GetDisplayText();
 
-    private string GetHotkeyText()
+    private string GetDisplayText()
     {
         if (SelectedKey == Keys.None) return "Atanmadi";
         var parts = new List<string>();
@@ -872,62 +1057,57 @@ public class ModernHotkeyDialog : Form
 // Modern Volume Dialog
 public class ModernVolumeDialog : Form
 {
-    private readonly Color _bgDark = Color.FromArgb(30, 30, 35);
-    private readonly Color _bgCard = Color.FromArgb(45, 45, 50);
+    private readonly Color _bgDark = Color.FromArgb(32, 34, 37);
+    private readonly Color _bgCard = Color.FromArgb(47, 49, 54);
     private readonly Color _accent = Color.FromArgb(88, 101, 242);
     private readonly Color _textPrimary = Color.White;
-    private readonly Color _textSecondary = Color.FromArgb(180, 180, 180);
 
     public float SelectedVolume { get; private set; }
-    private Label _volumeLabel = null!;
+    private Label _display = null!;
     private TrackBar _slider = null!;
 
-    public ModernVolumeDialog(float currentVolume)
+    public ModernVolumeDialog(float volume)
     {
-        SelectedVolume = currentVolume;
-        SetupUI();
+        SelectedVolume = volume;
+        BuildUI();
     }
 
-    private void SetupUI()
+    private void BuildUI()
     {
-        Text = "Ses Ayarla";
-        Size = new Size(320, 160);
+        Size = new Size(300, 140);
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.CenterParent;
         BackColor = _bgDark;
-        ForeColor = _textPrimary;
 
-        var titleBar = new Panel { Dock = DockStyle.Top, Height = 35, BackColor = Color.FromArgb(20, 20, 25) };
         var title = new Label
         {
-            Text = "🔊 Ses Ayarla",
-            Font = new Font("Segoe UI", 10, FontStyle.Bold),
+            Text = "Ses Seviyesi",
+            Font = new Font("Segoe UI Semibold", 11),
             ForeColor = _textPrimary,
-            Location = new Point(10, 8),
+            Location = new Point(20, 15),
             AutoSize = true
         };
-        titleBar.Controls.Add(title);
 
         _slider = new TrackBar
         {
-            Location = new Point(20, 50),
+            Location = new Point(20, 45),
             Size = new Size(200, 30),
             Minimum = 0,
-            Maximum = 200,
+            Maximum = 100,
             Value = (int)(SelectedVolume * 100),
-            TickFrequency = 20,
+            TickStyle = TickStyle.None,
             BackColor = _bgDark
         };
         _slider.ValueChanged += (s, e) =>
         {
             SelectedVolume = _slider.Value / 100f;
-            _volumeLabel.Text = $"{_slider.Value}%";
+            _display.Text = $"{_slider.Value}%";
         };
 
-        _volumeLabel = new Label
+        _display = new Label
         {
             Text = $"{_slider.Value}%",
-            Font = new Font("Segoe UI", 14, FontStyle.Bold),
+            Font = new Font("Segoe UI Semibold", 12),
             ForeColor = _accent,
             Location = new Point(230, 50),
             AutoSize = true
@@ -936,12 +1116,12 @@ public class ModernVolumeDialog : Form
         var okBtn = new Button
         {
             Text = "Tamam",
-            Size = new Size(100, 30),
-            Location = new Point(70, 100),
+            Size = new Size(120, 30),
+            Location = new Point(20, 90),
             FlatStyle = FlatStyle.Flat,
             BackColor = _accent,
             ForeColor = _textPrimary,
-            Font = new Font("Segoe UI", 9, FontStyle.Bold),
+            Font = new Font("Segoe UI Semibold", 9),
             DialogResult = DialogResult.OK
         };
         okBtn.FlatAppearance.BorderSize = 0;
@@ -949,26 +1129,18 @@ public class ModernVolumeDialog : Form
         var cancelBtn = new Button
         {
             Text = "Iptal",
-            Size = new Size(100, 30),
-            Location = new Point(180, 100),
+            Size = new Size(120, 30),
+            Location = new Point(160, 90),
             FlatStyle = FlatStyle.Flat,
-            BackColor = Color.FromArgb(237, 66, 69),
+            BackColor = _bgCard,
             ForeColor = _textPrimary,
             Font = new Font("Segoe UI", 9),
             DialogResult = DialogResult.Cancel
         };
         cancelBtn.FlatAppearance.BorderSize = 0;
 
-        Controls.AddRange(new Control[] { titleBar, _slider, _volumeLabel, okBtn, cancelBtn });
+        Controls.AddRange(new Control[] { title, _slider, _display, okBtn, cancelBtn });
         AcceptButton = okBtn;
         CancelButton = cancelBtn;
     }
-}
-
-public class DeviceItem
-{
-    public int DeviceNumber { get; }
-    public string Name { get; }
-    public DeviceItem(int deviceNumber, string name) { DeviceNumber = deviceNumber; Name = name; }
-    public override string ToString() => Name;
 }
