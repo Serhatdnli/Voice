@@ -18,7 +18,6 @@ DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 OutputDir=Output
 OutputBaseFilename=VoiceBoard_Setup
-SetupIconFile=..\icon.ico
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
