@@ -11,9 +11,12 @@ public class MyInstantsService
 
     public MyInstantsService()
     {
-        _httpClient = new HttpClient();
+        var handler = new HttpClientHandler { AllowAutoRedirect = true };
+        _httpClient = new HttpClient(handler);
         _httpClient.DefaultRequestHeaders.Add("User-Agent",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+        _httpClient.DefaultRequestHeaders.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+        _httpClient.DefaultRequestHeaders.Add("Accept-Language", "tr-TR,tr;q=0.9,en;q=0.8");
     }
 
     public async Task<List<SearchResult>> SearchAsync(string query, CancellationToken cancellationToken = default)
@@ -22,38 +25,44 @@ public class MyInstantsService
 
         try
         {
-            var searchUrl = $"{BaseUrl}/tr/search/?name={WebUtility.UrlEncode(query)}";
+            // New URL structure: /en/search/?name=query
+            var searchUrl = $"{BaseUrl}/en/search/?name={WebUtility.UrlEncode(query)}";
             var html = await _httpClient.GetStringAsync(searchUrl, cancellationToken);
 
-            var doc = new HtmlDoc();
-            doc.LoadHtml(html);
+            // Use regex to find all sound URLs directly from HTML
+            var matches = System.Text.RegularExpressions.Regex.Matches(
+                html,
+                @"<div[^>]*class=""[^""]*small-button[^""]*""[^>]*onmousedown=""play\('([^']+)'\)""",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
-            var instantNodes = doc.DocumentNode.SelectNodes("//div[contains(@class, 'instant')]");
+            // Also find titles - they're in anchor tags with class containing "instant-link"
+            var titleMatches = System.Text.RegularExpressions.Regex.Matches(
+                html,
+                @"<a[^>]*class=""[^""]*instant-link[^""]*""[^>]*href=""([^""]+)""[^>]*>([^<]+)</a>",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
-            if (instantNodes == null) return results;
-
-            foreach (var node in instantNodes)
+            var titles = new List<(string href, string title)>();
+            foreach (System.Text.RegularExpressions.Match m in titleMatches)
             {
-                var titleNode = node.SelectSingleNode(".//a[@class='instant-link']");
-                // Site uses div.small-button with onmousedown, not button with onclick
-                var buttonNode = node.SelectSingleNode(".//div[contains(@class, 'small-button')]");
+                titles.Add((m.Groups[1].Value, WebUtility.HtmlDecode(m.Groups[2].Value.Trim())));
+            }
 
-                if (titleNode == null || buttonNode == null) continue;
+            int index = 0;
+            foreach (System.Text.RegularExpressions.Match match in matches)
+            {
+                var soundPath = match.Groups[1].Value;
+                var soundUrl = soundPath.StartsWith("http") ? soundPath : BaseUrl + soundPath;
 
-                // Try onmousedown first, then onclick as fallback
-                var onClickAttr = buttonNode.GetAttributeValue("onmousedown", "");
-                if (string.IsNullOrEmpty(onClickAttr))
-                    onClickAttr = buttonNode.GetAttributeValue("onclick", "");
-                var soundUrl = ExtractSoundUrl(onClickAttr);
-
-                if (string.IsNullOrEmpty(soundUrl)) continue;
+                var title = index < titles.Count ? titles[index].title : $"Sound {index + 1}";
+                var pageUrl = index < titles.Count ? BaseUrl + titles[index].href : "";
 
                 results.Add(new SearchResult
                 {
-                    Title = WebUtility.HtmlDecode(titleNode.InnerText.Trim()),
-                    PageUrl = BaseUrl + titleNode.GetAttributeValue("href", ""),
-                    SoundUrl = soundUrl.StartsWith("http") ? soundUrl : BaseUrl + soundUrl
+                    Title = title,
+                    PageUrl = pageUrl,
+                    SoundUrl = soundUrl
                 });
+                index++;
             }
         }
         catch (Exception ex)
@@ -70,37 +79,45 @@ public class MyInstantsService
 
         try
         {
-            var html = await _httpClient.GetStringAsync($"{BaseUrl}/tr/", cancellationToken);
+            // New URL structure: /en/index/tr/ for Turkish trending
+            var html = await _httpClient.GetStringAsync($"{BaseUrl}/en/index/tr/", cancellationToken);
 
-            var doc = new HtmlDoc();
-            doc.LoadHtml(html);
+            // Use regex to find all sound URLs directly from HTML
+            var matches = System.Text.RegularExpressions.Regex.Matches(
+                html,
+                @"<div[^>]*class=""[^""]*small-button[^""]*""[^>]*onmousedown=""play\('([^']+)'\)""",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
-            var instantNodes = doc.DocumentNode.SelectNodes("//div[contains(@class, 'instant')]");
+            // Also find titles
+            var titleMatches = System.Text.RegularExpressions.Regex.Matches(
+                html,
+                @"<a[^>]*class=""[^""]*instant-link[^""]*""[^>]*href=""([^""]+)""[^>]*>([^<]+)</a>",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
-            if (instantNodes == null) return results;
-
-            foreach (var node in instantNodes.Take(20))
+            var titles = new List<(string href, string title)>();
+            foreach (System.Text.RegularExpressions.Match m in titleMatches)
             {
-                var titleNode = node.SelectSingleNode(".//a[@class='instant-link']");
-                // Site uses div.small-button with onmousedown, not button with onclick
-                var buttonNode = node.SelectSingleNode(".//div[contains(@class, 'small-button')]");
+                titles.Add((m.Groups[1].Value, WebUtility.HtmlDecode(m.Groups[2].Value.Trim())));
+            }
 
-                if (titleNode == null || buttonNode == null) continue;
+            int index = 0;
+            foreach (System.Text.RegularExpressions.Match match in matches)
+            {
+                if (index >= 20) break; // Limit to 20
 
-                // Try onmousedown first, then onclick as fallback
-                var onClickAttr = buttonNode.GetAttributeValue("onmousedown", "");
-                if (string.IsNullOrEmpty(onClickAttr))
-                    onClickAttr = buttonNode.GetAttributeValue("onclick", "");
-                var soundUrl = ExtractSoundUrl(onClickAttr);
+                var soundPath = match.Groups[1].Value;
+                var soundUrl = soundPath.StartsWith("http") ? soundPath : BaseUrl + soundPath;
 
-                if (string.IsNullOrEmpty(soundUrl)) continue;
+                var title = index < titles.Count ? titles[index].title : $"Sound {index + 1}";
+                var pageUrl = index < titles.Count ? BaseUrl + titles[index].href : "";
 
                 results.Add(new SearchResult
                 {
-                    Title = WebUtility.HtmlDecode(titleNode.InnerText.Trim()),
-                    PageUrl = BaseUrl + titleNode.GetAttributeValue("href", ""),
-                    SoundUrl = soundUrl.StartsWith("http") ? soundUrl : BaseUrl + soundUrl
+                    Title = title,
+                    PageUrl = pageUrl,
+                    SoundUrl = soundUrl
                 });
+                index++;
             }
         }
         catch (Exception ex)
