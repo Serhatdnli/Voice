@@ -284,14 +284,14 @@ public partial class MainForm : Form
             AutoSize = true
         };
 
-        if (_audioService.HasLoopbackDevice)
+        if (_audioService.HasVirtualCable)
         {
-            audioModeStatus.Text = $"● Loopback: {_audioService.SelectedLoopbackDevice}";
+            audioModeStatus.Text = $"● VB-Cable: {_audioService.VirtualCableDeviceName}";
             audioModeStatus.ForeColor = _success;
         }
         else
         {
-            audioModeStatus.Text = "○ Loopback cihazi bulunamadi";
+            audioModeStatus.Text = "○ VB-Cable bulunamadi - vb-audio.com/Cable";
             audioModeStatus.ForeColor = _warning;
         }
 
@@ -847,7 +847,7 @@ public partial class MainForm : Form
         if (_currentlyPlaying != null)
             return $"▶ {_currentlyPlaying}";
 
-        var mode = _audioService.HasLoopbackDevice ? "DirectSound ✓" : "Hoparlor";
+        var mode = _audioService.HasVirtualCable ? "VB-Cable ✓" : "Hoparlor";
         return $"Hazir • {mode} • Ctrl+Shift+V";
     }
 
@@ -993,9 +993,6 @@ public partial class MainForm : Form
     {
         base.OnHandleCreated(e);
         RegisterHotKey(Handle, HOTKEY_SHOW_HIDE, MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, (uint)Keys.V);
-
-        // DirectSound'u window handle ile başlat
-        _audioService.InitializeDirectSoundCapture(Handle);
     }
 
     protected override void WndProc(ref Message m)
