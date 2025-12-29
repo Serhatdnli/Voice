@@ -131,11 +131,18 @@ public class APOService : IDisposable
             var buffer = new float[4096];
             int read;
 
+            // Apply volume boost - web audio is often quiet
+            // Boost by 3x to make it audible, then apply user volume
+            float boostMultiplier = 3.0f * volume;
+
             while ((read = provider.Read(buffer, 0, buffer.Length)) > 0)
             {
                 for (int i = 0; i < read; i++)
                 {
-                    samples.Add(buffer[i] * volume);
+                    // Apply boost and clamp to prevent distortion
+                    float sample = buffer[i] * boostMultiplier;
+                    sample = Math.Clamp(sample, -1.0f, 1.0f);
+                    samples.Add(sample);
                 }
             }
 

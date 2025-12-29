@@ -112,7 +112,9 @@ public class AudioService : IDisposable
 
         OnSoundStarted?.Invoke();
 
-        var effectiveVolume = volume * MasterVolume;
+        // Apply volume with boost (web audio is often quiet)
+        var effectiveVolume = volume * MasterVolume * 2.5f;
+        effectiveVolume = Math.Min(effectiveVolume, 3.0f); // Cap at 3x to prevent distortion
 
         // Always play to speakers if enabled
         if (PlayToSpeakers)
