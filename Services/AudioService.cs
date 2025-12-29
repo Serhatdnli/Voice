@@ -1,10 +1,12 @@
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
+using System.Runtime.InteropServices;
 
 namespace VoiceBoard.Services;
 
 public enum AudioOutputMode
 {
+    DirectSound,   // DirectSound API - direct microphone injection
     APO,           // Direct injection via APO (no VB-Cable needed)
     VirtualCable,  // VB-Cable passthrough mode
     SpeakersOnly   // Just play to speakers
@@ -26,7 +28,10 @@ public class AudioService : IDisposable
     // APO Service
     private APOService? _apoService;
 
-    public AudioOutputMode OutputMode { get; set; } = AudioOutputMode.APO;
+    // DirectSound
+    private DirectSoundOut? _directSoundOutput;
+
+    public AudioOutputMode OutputMode { get; set; } = AudioOutputMode.DirectSound; // Try DirectSound first
     public int? VirtualCableDeviceNumber { get; set; }
     public int? MicrophoneDeviceNumber { get; set; }
     public bool PlayToSpeakers { get; set; } = true;
@@ -41,9 +46,47 @@ public class AudioService : IDisposable
     public event Action? OnSoundStarted;
     public event Action? OnSoundFinished;
 
+    // DirectSound device GUID for microphone injection
+    public Guid? DirectSoundMicDevice { get; private set; }
+
     public AudioService()
     {
+        InitializeDirectSound();
         InitializeAPO();
+    }
+
+    private void InitializeDirectSound()
+    {
+        try
+        {
+            // Get all DirectSound devices
+            var devices = DirectSoundOut.Devices.ToList();
+
+            System.Diagnostics.Debug.WriteLine("=== DirectSound Devices ===");
+            foreach (var device in devices)
+            {
+                System.Diagnostics.Debug.WriteLine($"  {device.Description} - {device.Guid}");
+
+                // Look for any device that might be a microphone or capture device
+                var desc = device.Description.ToLower();
+                if (desc.Contains("mic") || desc.Contains("capture") || desc.Contains("input") ||
+                    desc.Contains("record") || desc.Contains("line in"))
+                {
+                    DirectSoundMicDevice = device.Guid;
+                    System.Diagnostics.Debug.WriteLine($"  ^^^ Found potential mic device!");
+                }
+            }
+
+            if (DirectSoundMicDevice.HasValue)
+            {
+                OutputMode = AudioOutputMode.DirectSound;
+                System.Diagnostics.Debug.WriteLine($"DirectSound mic device found: {DirectSoundMicDevice}");
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"DirectSound init error: {ex.Message}");
+        }
     }
 
     private void InitializeAPO()
@@ -120,8 +163,20 @@ public class AudioService : IDisposable
             PlayToDevice(-1, filePath, effectiveVolume, ref _speakerOutput, ref _currentSpeakerReader, OnPlaybackFinished);
         }
 
-        // Send to microphone stream (APO has its own boost)
-        if (OutputMode == AudioOutputMode.APO && _apoService?.IsConnected == true)
+        // Send to microphone stream
+        if (OutputMode == AudioOutputMode.DirectSound && DirectSoundMicDevice.HasValue)
+        {
+            // DirectSound - try to inject to microphone device
+            try
+            {
+                PlayWithDirectSound(filePath, effectiveVolume);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"DirectSound playback error: {ex.Message}");
+            }
+        }
+        else if (OutputMode == AudioOutputMode.APO && _apoService?.IsConnected == true)
         {
             // Use APO - direct injection, no VB-Cable needed!
             try
@@ -146,6 +201,29 @@ public class AudioService : IDisposable
     private void OnPlaybackFinished(object? sender, StoppedEventArgs e)
     {
         OnSoundFinished?.Invoke();
+    }
+
+    private void PlayWithDirectSound(string filePath, float volume)
+    {
+        if (!DirectSoundMicDevice.HasValue) return;
+
+        try
+        {
+            _directSoundOutput?.Dispose();
+
+            var reader = new AudioFileReader(filePath) { Volume = volume * 3.0f }; // Boost for mic
+
+            // Try to play to the microphone device via DirectSound
+            _directSoundOutput = new DirectSoundOut(DirectSoundMicDevice.Value);
+            _directSoundOutput.Init(reader);
+            _directSoundOutput.Play();
+
+            System.Diagnostics.Debug.WriteLine($"DirectSound playing to: {DirectSoundMicDevice}");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"DirectSound play error: {ex.Message}");
+        }
     }
 
     private void PlayToDevice(int deviceNumber, string filePath, float volume,
@@ -282,6 +360,7 @@ public class AudioService : IDisposable
     {
         _speakerOutput?.Stop();
         _virtualCableOutput?.Stop();
+        _directSoundOutput?.Stop();
         _apoService?.Stop();
 
         _currentSpeakerReader?.Dispose();
@@ -294,7 +373,10 @@ public class AudioService : IDisposable
     public bool IsPlaying =>
         (_speakerOutput?.PlaybackState == PlaybackState.Playing) ||
         (_virtualCableOutput?.PlaybackState == PlaybackState.Playing) ||
+        (_directSoundOutput?.PlaybackState == PlaybackState.Playing) ||
         (_apoService?.IsPlaying ?? false);
+
+    public bool IsDirectSoundAvailable => DirectSoundMicDevice.HasValue;
 
     public bool IsPassthroughActive => _isPassthroughActive;
 
@@ -304,6 +386,7 @@ public class AudioService : IDisposable
         StopMicrophonePassthrough();
         _speakerOutput?.Dispose();
         _virtualCableOutput?.Dispose();
+        _directSoundOutput?.Dispose();
         _currentSpeakerReader?.Dispose();
         _currentCableReader?.Dispose();
         _apoService?.Dispose();

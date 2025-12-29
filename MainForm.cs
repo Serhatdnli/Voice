@@ -318,7 +318,12 @@ public partial class MainForm : Form
             AutoSize = true
         };
 
-        if (_audioService.OutputMode == AudioOutputMode.VirtualCable)
+        if (_audioService.OutputMode == AudioOutputMode.DirectSound && _audioService.IsDirectSoundAvailable)
+        {
+            audioModeStatus.Text = "● DirectSound Aktif";
+            audioModeStatus.ForeColor = _success;
+        }
+        else if (_audioService.OutputMode == AudioOutputMode.VirtualCable)
         {
             var cables = _audioService.GetVirtualCableDevices();
             var cableName = cables.Count > 0 ? cables[0].Name : "VB-Cable";
@@ -332,7 +337,7 @@ public partial class MainForm : Form
         }
         else
         {
-            audioModeStatus.Text = "○ Sadece Hoparlor (VB-Cable kur)";
+            audioModeStatus.Text = "○ Sadece Hoparlor";
             audioModeStatus.ForeColor = _warning;
         }
 
@@ -892,7 +897,11 @@ public partial class MainForm : Form
             return $"▶ {_currentlyPlaying}";
 
         string mode;
-        if (_audioService.OutputMode == AudioOutputMode.APO)
+        if (_audioService.OutputMode == AudioOutputMode.DirectSound)
+        {
+            mode = _audioService.IsDirectSoundAvailable ? "DirectSound ✓" : "DirectSound (yok)";
+        }
+        else if (_audioService.OutputMode == AudioOutputMode.APO)
         {
             if (_audioService.IsAPOInstalled)
                 mode = _audioService.IsAPOConnected ? "APO ✓" : "APO (baglaniyor)";
