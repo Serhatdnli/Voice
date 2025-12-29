@@ -83,9 +83,6 @@ public partial class MainForm : Form
         _settingsService = new SettingsService();
         _settings = _settingsService.Load();
 
-        // Auto-detect VB-Cable
-        SetupAudioOutput();
-
         _audioService.OnSoundFinished += () =>
         {
             _currentlyPlaying = null;
@@ -103,27 +100,6 @@ public partial class MainForm : Form
         BuildFullModeUI();
         BuildMiniModeUI();
         ShowFullMode();
-    }
-
-    private void SetupAudioOutput()
-    {
-        // Try to find VB-Cable automatically
-        var virtualCables = _audioService.GetVirtualCableDevices();
-        if (virtualCables.Count > 0)
-        {
-            _audioService.VirtualCableDeviceNumber = virtualCables[0].DeviceNumber;
-            _audioService.OutputMode = AudioOutputMode.VirtualCable;
-            _audioService.PlayToVirtualCable = true;
-
-            // Find default microphone for passthrough
-            var mics = _audioService.GetInputDevices();
-            if (mics.Count > 0)
-            {
-                _audioService.MicrophoneDeviceNumber = 0; // Default mic
-                _audioService.MicrophonePassthroughEnabled = true;
-                _audioService.StartMicrophonePassthrough();
-            }
-        }
     }
 
     private void InitializeComponent()
@@ -253,7 +229,7 @@ public partial class MainForm : Form
         var bottomPanel = new Panel
         {
             Dock = DockStyle.Bottom,
-            Height = 85,
+            Height = 100,
             BackColor = _bgDarker,
             Padding = new Padding(12, 8, 12, 8)
         };
@@ -300,17 +276,36 @@ public partial class MainForm : Form
         stopBtn.BackColor = _danger;
         stopBtn.Click += (s, e) => { _audioService.Stop(); _currentlyPlaying = null; UpdateStatus(); };
 
+        // APO Status indicator
+        var apoStatus = new Label
+        {
+            Font = new Font("Segoe UI", 8),
+            Location = new Point(12, 50),
+            AutoSize = true
+        };
+
+        if (_audioService.IsAPOInstalled)
+        {
+            apoStatus.Text = "● APO Aktif";
+            apoStatus.ForeColor = _success;
+        }
+        else
+        {
+            apoStatus.Text = "○ APO Kurulu Degil (Installer'dan kurun)";
+            apoStatus.ForeColor = _warning;
+        }
+
         // Status Row
         _statusLabel = new Label
         {
             Text = GetStatusText(),
             Font = new Font("Segoe UI", 9),
             ForeColor = _textMuted,
-            Location = new Point(12, 50),
+            Location = new Point(12, 68),
             Size = new Size(450, 25)
         };
 
-        bottomPanel.Controls.AddRange(new Control[] { volIcon, _volumeSlider, _autoSwitchCheck, stopBtn, _statusLabel });
+        bottomPanel.Controls.AddRange(new Control[] { volIcon, _volumeSlider, _autoSwitchCheck, stopBtn, apoStatus, _statusLabel });
 
         _mainPanel.Controls.Add(_tabControl);
         _mainPanel.Controls.Add(searchSection);
@@ -855,12 +850,23 @@ public partial class MainForm : Form
         if (_currentlyPlaying != null)
             return $"▶ {_currentlyPlaying}";
 
-        var mode = _audioService.OutputMode switch
+        string mode;
+        if (_audioService.OutputMode == AudioOutputMode.APO)
         {
-            AudioOutputMode.APO => "APO",
-            AudioOutputMode.VirtualCable => "VB-Cable",
-            _ => "Hoparlor"
-        };
+            if (_audioService.IsAPOInstalled)
+                mode = _audioService.IsAPOConnected ? "APO ✓" : "APO (baglaniyor)";
+            else
+                mode = "APO (kurulum gerekli)";
+        }
+        else if (_audioService.OutputMode == AudioOutputMode.VirtualCable)
+        {
+            mode = "VB-Cable";
+        }
+        else
+        {
+            mode = "Sadece Hoparlor";
+        }
+
         return $"Hazir • {mode} • Ctrl+Shift+V";
     }
 
