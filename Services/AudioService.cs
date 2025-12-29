@@ -264,7 +264,7 @@ public class AudioService : IDisposable
 
     public bool IsPlaying =>
         (_speakerOutput?.PlaybackState == PlaybackState.Playing) ||
-        (_secondaryBuffer?.Status.HasFlag(BufferStatus.Playing) ?? false);
+        ((_secondaryBuffer?.Status & (int)BufferStatus.Playing) != 0);
 
     public void Dispose()
     {
