@@ -131,9 +131,9 @@ public class APOService : IDisposable
             var buffer = new float[4096];
             int read;
 
-            // Apply volume boost - web audio is often quiet
-            // Boost by 3x to make it audible, then apply user volume
-            float boostMultiplier = 3.0f * volume;
+            // Apply volume boost for APO/microphone output
+            // Web audio is often quiet - boost by 6x for microphone
+            float boostMultiplier = 6.0f * volume;
 
             while ((read = provider.Read(buffer, 0, buffer.Length)) > 0)
             {

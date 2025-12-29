@@ -112,17 +112,15 @@ public class AudioService : IDisposable
 
         OnSoundStarted?.Invoke();
 
-        // Apply volume with boost (web audio is often quiet)
-        var effectiveVolume = volume * MasterVolume * 2.5f;
-        effectiveVolume = Math.Min(effectiveVolume, 3.0f); // Cap at 3x to prevent distortion
+        var effectiveVolume = volume * MasterVolume;
 
-        // Always play to speakers if enabled
+        // Always play to speakers if enabled (no boost - normal volume)
         if (PlayToSpeakers)
         {
             PlayToDevice(-1, filePath, effectiveVolume, ref _speakerOutput, ref _currentSpeakerReader, OnPlaybackFinished);
         }
 
-        // Send to microphone stream
+        // Send to microphone stream (APO has its own boost)
         if (OutputMode == AudioOutputMode.APO && _apoService?.IsConnected == true)
         {
             // Use APO - direct injection, no VB-Cable needed!
