@@ -594,16 +594,25 @@ public partial class MainForm : Form
         {
             _normalSize = Size;
             _normalLocation = Location;
+
+            // Hide main content
             _mainPanel.Visible = false;
             _titleBar.Visible = false;
 
+            // Set mini window size
             FormBorderStyle = FormBorderStyle.None;
             Size = new Size(200, 60);
             TopMost = true;
             Opacity = 0.95;
             Location = new Point(Screen.PrimaryScreen!.WorkingArea.Width - 210, 10);
 
-            _miniBar = new Panel { Dock = DockStyle.Fill, BackColor = _bgCard };
+            // Create mini bar with explicit bounds (not Dock.Fill to avoid conflicts)
+            _miniBar = new Panel
+            {
+                Location = new Point(0, 0),
+                Size = new Size(200, 60),
+                BackColor = _bgCard
+            };
             _miniBar.MouseDown += MiniBar_MouseDown;
 
             var miniTitle = new Label
@@ -622,37 +631,49 @@ public partial class MainForm : Form
                 Font = new Font("Segoe UI", 8),
                 ForeColor = _textSecondary,
                 Location = new Point(8, 28),
-                Size = new Size(140, 20)
+                Size = new Size(115, 20)
             };
             _miniStatusLabel.MouseDown += MiniBar_MouseDown;
 
-            var expandBtn = CreateButton("◱", 30, 25);
-            expandBtn.Location = new Point(155, 5);
+            var expandBtn = CreateButton("◱", 35, 25);
+            expandBtn.Location = new Point(125, 5);
             expandBtn.BackColor = _accent;
             expandBtn.Font = new Font("Segoe UI", 10);
             expandBtn.Click += ToggleMiniMode;
 
-            var stopBtn = CreateButton("■", 30, 25);
-            stopBtn.Location = new Point(155, 32);
+            var stopBtn = CreateButton("■", 35, 25);
+            stopBtn.Location = new Point(162, 5);
             stopBtn.BackColor = _danger;
             stopBtn.Click += (s, e) => { _audioService.Stop(); UpdatePlaybackStatus(); };
 
-            _miniBar.Controls.AddRange(new Control[] { miniTitle, _miniStatusLabel, expandBtn, stopBtn });
+            // Add controls to mini bar
+            _miniBar.Controls.Add(miniTitle);
+            _miniBar.Controls.Add(_miniStatusLabel);
+            _miniBar.Controls.Add(expandBtn);
+            _miniBar.Controls.Add(stopBtn);
+
+            // Add mini bar to form and bring to front
             Controls.Add(_miniBar);
+            _miniBar.BringToFront();
 
             _isMiniMode = true;
         }
         else
         {
+            // Remove and dispose mini bar
             Controls.Remove(_miniBar);
             _miniBar?.Dispose();
+            _miniBar = null!;
             _miniStatusLabel = null;
 
+            // Restore normal mode
             FormBorderStyle = FormBorderStyle.None;
             Size = _normalSize;
             Location = _normalLocation;
             TopMost = _alwaysOnTopCheck.Checked;
             Opacity = 1.0;
+
+            // Show main content
             _mainPanel.Visible = true;
             _titleBar.Visible = true;
 
