@@ -29,36 +29,56 @@ public class AudioService : IDisposable
     {
         try
         {
-            // Get all DirectSound devices
-            var devices = DirectSoundOut.Devices.ToList();
-
-            System.Diagnostics.Debug.WriteLine("=== DirectSound Devices ===");
-            foreach (var device in devices)
+            // List OUTPUT devices (speakers, headphones, virtual cables)
+            System.Diagnostics.Debug.WriteLine("=== OUTPUT Devices (WaveOut) ===");
+            for (int i = 0; i < WaveOut.DeviceCount; i++)
             {
-                System.Diagnostics.Debug.WriteLine($"  {device.Description} - {device.Guid}");
+                var caps = WaveOut.GetCapabilities(i);
+                System.Diagnostics.Debug.WriteLine($"  [{i}] {caps.ProductName}");
+            }
 
-                // Look for any device that might be a microphone or capture device
-                var desc = device.Description.ToLower();
-                if (desc.Contains("mic") || desc.Contains("capture") || desc.Contains("input") ||
-                    desc.Contains("record") || desc.Contains("line in") || desc.Contains("stereo mix"))
+            // List INPUT devices (microphones, line-in, stereo mix)
+            System.Diagnostics.Debug.WriteLine("=== INPUT Devices (WaveIn) ===");
+            for (int i = 0; i < WaveIn.DeviceCount; i++)
+            {
+                var caps = WaveIn.GetCapabilities(i);
+                System.Diagnostics.Debug.WriteLine($"  [{i}] {caps.ProductName}");
+
+                // Check for Stereo Mix or virtual cable input
+                var name = caps.ProductName.ToLower();
+                if (name.Contains("stereo mix") || name.Contains("cable") ||
+                    name.Contains("virtual") || name.Contains("voicemeeter"))
                 {
-                    DirectSoundMicDevice = device.Guid;
-                    System.Diagnostics.Debug.WriteLine($"  ^^^ Found potential mic device!");
+                    System.Diagnostics.Debug.WriteLine($"  ^^^ Potential loopback device!");
                 }
             }
 
-            if (DirectSoundMicDevice.HasValue)
+            // List DirectSound OUTPUT devices
+            System.Diagnostics.Debug.WriteLine("=== DirectSound OUTPUT Devices ===");
+            var dsDevices = DirectSoundOut.Devices.ToList();
+            foreach (var device in dsDevices)
             {
-                System.Diagnostics.Debug.WriteLine($"DirectSound mic device found: {DirectSoundMicDevice}");
+                System.Diagnostics.Debug.WriteLine($"  {device.Description} - {device.Guid}");
+
+                // Look for virtual audio cable output
+                var desc = device.Description.ToLower();
+                if (desc.Contains("cable") || desc.Contains("virtual") ||
+                    desc.Contains("voicemeeter") || desc.Contains("vb-audio"))
+                {
+                    DirectSoundMicDevice = device.Guid;
+                    System.Diagnostics.Debug.WriteLine($"  ^^^ Virtual cable found - can use for mic injection!");
+                }
             }
-            else
-            {
-                System.Diagnostics.Debug.WriteLine("No DirectSound mic device found");
-            }
+
+            System.Diagnostics.Debug.WriteLine("================================");
+            System.Diagnostics.Debug.WriteLine("NOTE: Microphones are INPUT devices.");
+            System.Diagnostics.Debug.WriteLine("Cannot 'play' audio to input devices.");
+            System.Diagnostics.Debug.WriteLine("Need virtual audio cable or Stereo Mix.");
+            System.Diagnostics.Debug.WriteLine("================================");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"DirectSound init error: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"Audio init error: {ex.Message}");
         }
     }
 
