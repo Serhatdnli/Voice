@@ -29,22 +29,55 @@ public class MyInstantsService
             var searchUrl = $"{BaseUrl}/en/search/?name={WebUtility.UrlEncode(query)}";
             var html = await _httpClient.GetStringAsync(searchUrl, cancellationToken);
 
-            // Use regex to find all sound URLs directly from HTML
+            // DEBUG: Save HTML to file for inspection
+            var debugPath = Path.Combine(Path.GetTempPath(), "myinstants_debug.html");
+            File.WriteAllText(debugPath, html);
+            System.Diagnostics.Debug.WriteLine($"HTML saved to: {debugPath}");
+
+            // Try multiple regex patterns
+            // Pattern 1: onmousedown with play()
             var matches = System.Text.RegularExpressions.Regex.Matches(
                 html,
-                @"<div[^>]*class=""[^""]*small-button[^""]*""[^>]*onmousedown=""play\('([^']+)'\)""",
+                @"onmousedown\s*=\s*[""']play\([""']([^""']+)[""']\)",
                 System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
-            // Also find titles - they're in anchor tags with class containing "instant-link"
+            // Pattern 2: If pattern 1 fails, try onclick
+            if (matches.Count == 0)
+            {
+                matches = System.Text.RegularExpressions.Regex.Matches(
+                    html,
+                    @"onclick\s*=\s*[""']play\([""']([^""']+)[""']\)",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            }
+
+            // Pattern 3: Try data-sound attribute
+            if (matches.Count == 0)
+            {
+                matches = System.Text.RegularExpressions.Regex.Matches(
+                    html,
+                    @"data-sound\s*=\s*[""']([^""']+)[""']",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            }
+
+            // Pattern 4: Look for /media/sounds/ paths directly
+            if (matches.Count == 0)
+            {
+                matches = System.Text.RegularExpressions.Regex.Matches(
+                    html,
+                    @"[""'](/media/sounds/[^""']+\.mp3)[""']",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            }
+
+            // Find titles
             var titleMatches = System.Text.RegularExpressions.Regex.Matches(
                 html,
-                @"<a[^>]*class=""[^""]*instant-link[^""]*""[^>]*href=""([^""]+)""[^>]*>([^<]+)</a>",
+                @"class\s*=\s*[""'][^""']*instant-link[^""']*[""'][^>]*>([^<]+)</a>",
                 System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
-            var titles = new List<(string href, string title)>();
+            var titles = new List<string>();
             foreach (System.Text.RegularExpressions.Match m in titleMatches)
             {
-                titles.Add((m.Groups[1].Value, WebUtility.HtmlDecode(m.Groups[2].Value.Trim())));
+                titles.Add(WebUtility.HtmlDecode(m.Groups[1].Value.Trim()));
             }
 
             int index = 0;
@@ -53,21 +86,23 @@ public class MyInstantsService
                 var soundPath = match.Groups[1].Value;
                 var soundUrl = soundPath.StartsWith("http") ? soundPath : BaseUrl + soundPath;
 
-                var title = index < titles.Count ? titles[index].title : $"Sound {index + 1}";
-                var pageUrl = index < titles.Count ? BaseUrl + titles[index].href : "";
+                var title = index < titles.Count ? titles[index] : $"Sound {index + 1}";
 
                 results.Add(new SearchResult
                 {
                     Title = title,
-                    PageUrl = pageUrl,
+                    PageUrl = "",
                     SoundUrl = soundUrl
                 });
                 index++;
             }
+
+            System.Diagnostics.Debug.WriteLine($"Found {matches.Count} sounds, {titles.Count} titles");
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Search error: {ex.Message}");
+            throw; // Re-throw to see the error
         }
 
         return results;
