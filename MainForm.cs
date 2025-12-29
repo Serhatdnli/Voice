@@ -69,8 +69,12 @@ public partial class MainForm : Form
     // UI Controls - Mini Mode
     private Panel _miniPanel = null!;
     private TextBox _miniSearchBox = null!;
-    private FlowLayoutPanel _miniFavorites = null!;
+    private FlowLayoutPanel _miniSoundList = null!;
     private Label _miniStatus = null!;
+    private bool _miniShowingFavorites = true;
+
+    // Currently playing sound name
+    private string? _currentlyPlaying = null;
 
     public MainForm()
     {
@@ -79,7 +83,17 @@ public partial class MainForm : Form
         _settingsService = new SettingsService();
         _settings = _settingsService.Load();
 
+        // Auto-detect VB-Cable
+        SetupAudioOutput();
+
         _audioService.OnSoundFinished += () =>
+        {
+            _currentlyPlaying = null;
+            if (InvokeRequired) BeginInvoke(UpdateStatus);
+            else UpdateStatus();
+        };
+
+        _audioService.OnSoundStarted += () =>
         {
             if (InvokeRequired) BeginInvoke(UpdateStatus);
             else UpdateStatus();
@@ -89,6 +103,27 @@ public partial class MainForm : Form
         BuildFullModeUI();
         BuildMiniModeUI();
         ShowFullMode();
+    }
+
+    private void SetupAudioOutput()
+    {
+        // Try to find VB-Cable automatically
+        var virtualCables = _audioService.GetVirtualCableDevices();
+        if (virtualCables.Count > 0)
+        {
+            _audioService.VirtualCableDeviceNumber = virtualCables[0].DeviceNumber;
+            _audioService.OutputMode = AudioOutputMode.VirtualCable;
+            _audioService.PlayToVirtualCable = true;
+
+            // Find default microphone for passthrough
+            var mics = _audioService.GetInputDevices();
+            if (mics.Count > 0)
+            {
+                _audioService.MicrophoneDeviceNumber = 0; // Default mic
+                _audioService.MicrophonePassthroughEnabled = true;
+                _audioService.StartMicrophonePassthrough();
+            }
+        }
     }
 
     private void InitializeComponent()
@@ -263,12 +298,12 @@ public partial class MainForm : Form
         var stopBtn = CreateButton("Durdur", 75, 30);
         stopBtn.Location = new Point(390, 8);
         stopBtn.BackColor = _danger;
-        stopBtn.Click += (s, e) => { _audioService.Stop(); UpdateStatus(); };
+        stopBtn.Click += (s, e) => { _audioService.Stop(); _currentlyPlaying = null; UpdateStatus(); };
 
         // Status Row
         _statusLabel = new Label
         {
-            Text = "Hazir • Ctrl+Shift+V ile goster/gizle",
+            Text = GetStatusText(),
             Font = new Font("Segoe UI", 9),
             ForeColor = _textMuted,
             Location = new Point(12, 50),
@@ -311,7 +346,7 @@ public partial class MainForm : Form
         _miniPanel = new Panel
         {
             Location = new Point(0, 0),
-            Size = new Size(320, 350),
+            Size = new Size(280, 180),
             BackColor = _bgDarker,
             Visible = false
         };
@@ -321,7 +356,7 @@ public partial class MainForm : Form
         var miniHeader = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 35,
+            Height = 30,
             BackColor = _bgDarker
         };
         miniHeader.MouseDown += DragWindow;
@@ -331,15 +366,17 @@ public partial class MainForm : Form
             Text = "🎵 VoiceBoard",
             Font = new Font("Segoe UI Semibold", 9),
             ForeColor = _textPrimary,
-            Location = new Point(10, 9),
+            Location = new Point(8, 7),
             AutoSize = true
         };
         miniLogo.MouseDown += DragWindow;
 
-        var expandBtn = CreateIconButton("◱", 255, 5);
+        var expandBtn = CreateIconButton("◱", 220, 2);
+        expandBtn.Size = new Size(25, 24);
         expandBtn.Click += (s, e) => ShowFullMode();
 
-        var miniCloseBtn = CreateIconButton("✕", 285, 5);
+        var miniCloseBtn = CreateIconButton("✕", 248, 2);
+        miniCloseBtn.Size = new Size(25, 24);
         miniCloseBtn.ForeColor = _danger;
         miniCloseBtn.Click += (s, e) => Close();
 
@@ -349,9 +386,9 @@ public partial class MainForm : Form
         var miniSearchPanel = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 40,
+            Height = 32,
             BackColor = _bgDarker,
-            Padding = new Padding(8, 4, 8, 4)
+            Padding = new Padding(6, 2, 6, 2)
         };
 
         _miniSearchBox = new TextBox
@@ -367,38 +404,39 @@ public partial class MainForm : Form
             if (e.KeyCode == Keys.Enter)
             {
                 e.SuppressKeyPress = true;
-                await SearchAsync(_miniSearchBox.Text);
+                await MiniSearchAsync(_miniSearchBox.Text);
             }
         };
+        _miniSearchBox.GotFocus += (s, e) => _miniShowingFavorites = false;
 
         var miniSearchWrapper = new Panel
         {
             Dock = DockStyle.Fill,
             BackColor = _bgCard,
-            Padding = new Padding(8, 5, 8, 5)
+            Padding = new Padding(6, 4, 6, 4)
         };
         _miniSearchBox.Dock = DockStyle.Fill;
         miniSearchWrapper.Controls.Add(_miniSearchBox);
         miniSearchPanel.Controls.Add(miniSearchWrapper);
 
-        // Mini Favorites
-        _miniFavorites = new FlowLayoutPanel
+        // Mini Sound List (shows 2 items)
+        _miniSoundList = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
             AutoScroll = true,
             FlowDirection = FlowDirection.TopDown,
             WrapContents = false,
             BackColor = _bgDark,
-            Padding = new Padding(4)
+            Padding = new Padding(4, 2, 4, 2)
         };
 
         // Mini Bottom
         var miniBottom = new Panel
         {
             Dock = DockStyle.Bottom,
-            Height = 45,
+            Height = 35,
             BackColor = _bgDarker,
-            Padding = new Padding(8)
+            Padding = new Padding(6)
         };
 
         _miniStatus = new Label
@@ -406,41 +444,55 @@ public partial class MainForm : Form
             Text = "Hazir",
             Font = new Font("Segoe UI", 8),
             ForeColor = _textMuted,
-            Location = new Point(8, 14),
-            Size = new Size(180, 20)
+            Location = new Point(6, 10),
+            Size = new Size(150, 18)
         };
+
+        var miniFavBtn = new Button
+        {
+            Text = "★",
+            Size = new Size(28, 24),
+            Location = new Point(160, 5),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = _warning,
+            ForeColor = _bgDark,
+            Font = new Font("Segoe UI", 9),
+            Cursor = Cursors.Hand
+        };
+        miniFavBtn.FlatAppearance.BorderSize = 0;
+        miniFavBtn.Click += (s, e) => { _miniShowingFavorites = true; LoadMiniSounds(); };
 
         var miniStopBtn = new Button
         {
             Text = "■",
-            Size = new Size(35, 28),
-            Location = new Point(200, 8),
+            Size = new Size(28, 24),
+            Location = new Point(192, 5),
             FlatStyle = FlatStyle.Flat,
             BackColor = _danger,
             ForeColor = _textPrimary,
-            Font = new Font("Segoe UI", 10),
+            Font = new Font("Segoe UI", 9),
             Cursor = Cursors.Hand
         };
         miniStopBtn.FlatAppearance.BorderSize = 0;
-        miniStopBtn.Click += (s, e) => { _audioService.Stop(); UpdateStatus(); };
+        miniStopBtn.Click += (s, e) => { _audioService.Stop(); _currentlyPlaying = null; UpdateStatus(); };
 
         var miniVolBtn = new Button
         {
             Text = "🔊",
-            Size = new Size(35, 28),
-            Location = new Point(240, 8),
+            Size = new Size(28, 24),
+            Location = new Point(224, 5),
             FlatStyle = FlatStyle.Flat,
             BackColor = _bgCard,
             ForeColor = _textPrimary,
-            Font = new Font("Segoe UI", 9),
+            Font = new Font("Segoe UI", 8),
             Cursor = Cursors.Hand
         };
         miniVolBtn.FlatAppearance.BorderSize = 0;
         miniVolBtn.Click += (s, e) => ShowVolumePopup();
 
-        miniBottom.Controls.AddRange(new Control[] { _miniStatus, miniStopBtn, miniVolBtn });
+        miniBottom.Controls.AddRange(new Control[] { _miniStatus, miniFavBtn, miniStopBtn, miniVolBtn });
 
-        _miniPanel.Controls.Add(_miniFavorites);
+        _miniPanel.Controls.Add(_miniSoundList);
         _miniPanel.Controls.Add(miniSearchPanel);
         _miniPanel.Controls.Add(miniBottom);
         _miniPanel.Controls.Add(miniHeader);
@@ -483,14 +535,15 @@ public partial class MainForm : Form
         _miniPanel.Visible = true;
 
         MinimumSize = Size.Empty;
-        Size = new Size(320, 350);
-        Location = new Point(Screen.PrimaryScreen!.WorkingArea.Width - 340, 20);
+        Size = new Size(280, 180);
+        Location = new Point(Screen.PrimaryScreen!.WorkingArea.Width - 300, 20);
         TopMost = true;
         Opacity = 0.97;
 
         _isMiniMode = true;
         _miniPanel.BringToFront();
-        LoadMiniFavorites();
+        _miniShowingFavorites = true;
+        LoadMiniSounds();
     }
 
     protected override void OnDeactivate(EventArgs e)
@@ -546,23 +599,25 @@ public partial class MainForm : Form
 
     private Panel CreateSoundCard(string name, string url, bool isFavorite, SoundItem? item = null, bool mini = false)
     {
-        var width = mini ? 295 : 440;
+        var width = mini ? 255 : 440;
+        var height = mini ? 32 : 48;
         var card = new Panel
         {
-            Size = new Size(width, mini ? 38 : 48),
+            Size = new Size(width, height),
             BackColor = _bgCard,
-            Margin = new Padding(0, 3, 0, 3),
+            Margin = new Padding(0, 2, 0, 2),
             Cursor = Cursors.Hand,
             Tag = item ?? new SoundItem { Name = name, SourceUrl = url }
         };
 
-        var displayName = name.Length > (mini ? 18 : 28) ? name[..(mini ? 15 : 25)] + "..." : name;
+        var maxLen = mini ? 20 : 28;
+        var displayName = name.Length > maxLen ? name[..(maxLen - 3)] + "..." : name;
         var nameLabel = new Label
         {
             Text = displayName,
-            Font = new Font("Segoe UI", mini ? 9 : 10),
+            Font = new Font("Segoe UI", mini ? 8 : 10),
             ForeColor = _textPrimary,
-            Location = new Point(10, mini ? 10 : 8),
+            Location = new Point(8, mini ? 8 : 8),
             AutoSize = true
         };
 
@@ -574,7 +629,7 @@ public partial class MainForm : Form
                 Text = item.HotkeyDisplayText,
                 Font = new Font("Segoe UI", 8),
                 ForeColor = _textMuted,
-                Location = new Point(10, 28),
+                Location = new Point(8, 28),
                 AutoSize = true
             };
         }
@@ -582,12 +637,12 @@ public partial class MainForm : Form
         var playBtn = new Button
         {
             Text = "▶",
-            Size = new Size(mini ? 32 : 38, mini ? 28 : 34),
-            Location = new Point(width - (mini ? 45 : 130), mini ? 5 : 7),
+            Size = new Size(mini ? 28 : 38, mini ? 24 : 34),
+            Location = new Point(width - (mini ? 38 : 130), mini ? 4 : 7),
             FlatStyle = FlatStyle.Flat,
             BackColor = _success,
             ForeColor = _bgDark,
-            Font = new Font("Segoe UI", mini ? 9 : 10),
+            Font = new Font("Segoe UI", mini ? 8 : 10),
             Cursor = Cursors.Hand
         };
         playBtn.FlatAppearance.BorderSize = 0;
@@ -684,7 +739,7 @@ public partial class MainForm : Form
         _searchCts?.Cancel();
         _searchCts = new CancellationTokenSource();
 
-        SetStatus("Araniyor...", _warning);
+        SetStatus("Araniyor...", true);
         _resultsList.Controls.Clear();
 
         try
@@ -694,20 +749,60 @@ public partial class MainForm : Form
             foreach (var r in results.Take(50))
                 _resultsList.Controls.Add(CreateSoundCard(r.Title, r.SoundUrl, false));
 
-            SetStatus($"{results.Count} sonuc bulundu", _success);
+            SetStatus($"{results.Count} sonuc bulundu", false);
 
             if (!_isMiniMode)
                 _tabControl.SelectedIndex = 0;
         }
         catch (Exception ex)
         {
-            SetStatus($"Hata: {ex.Message}", _danger);
+            SetStatus($"Hata: {ex.Message}", false);
+        }
+    }
+
+    private async Task MiniSearchAsync(string query)
+    {
+        query = query.Trim();
+        if (string.IsNullOrEmpty(query))
+        {
+            _miniShowingFavorites = true;
+            LoadMiniSounds();
+            return;
+        }
+
+        SetStatus("Araniyor...", true);
+        _miniSoundList.Controls.Clear();
+
+        try
+        {
+            var results = await _myInstantsService.SearchAsync(query);
+
+            foreach (var r in results.Take(20))
+                _miniSoundList.Controls.Add(CreateSoundCard(r.Title, r.SoundUrl, false, null, mini: true));
+
+            SetStatus($"{results.Count} sonuc", false);
+            _miniShowingFavorites = false;
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Hata: {ex.Message}", false);
+        }
+    }
+
+    private void LoadMiniSounds()
+    {
+        _miniSoundList.Controls.Clear();
+
+        if (_miniShowingFavorites)
+        {
+            foreach (var item in _settings.Sounds)
+                _miniSoundList.Controls.Add(CreateSoundCard(item.Name, item.SourceUrl, true, item, mini: true));
         }
     }
 
     private async Task LoadTrendingAsync()
     {
-        SetStatus("Trend yuklenyor...", _warning);
+        SetStatus("Trend yukleniyor...", true);
 
         try
         {
@@ -717,11 +812,11 @@ public partial class MainForm : Form
             foreach (var r in results)
                 _resultsList.Controls.Add(CreateSoundCard(r.Title, r.SoundUrl, false));
 
-            SetStatus($"{results.Count} trend ses yuklendi", _textMuted);
+            SetStatus($"{results.Count} trend ses yuklendi", false);
         }
         catch
         {
-            SetStatus("Trend yuklenemedi", _danger);
+            SetStatus("Trend yuklenemedi", false);
         }
     }
 
@@ -729,7 +824,8 @@ public partial class MainForm : Form
     {
         try
         {
-            SetStatus($"▶ {name}", _success);
+            _currentlyPlaying = name;
+            SetStatus($"▶ {name}", true);
 
             string path;
             if (item?.IsDownloaded == true)
@@ -738,35 +834,71 @@ public partial class MainForm : Form
             }
             else
             {
-                SetStatus($"Indiriliyor: {name}", _warning);
+                SetStatus($"Indiriliyor: {name}", true);
                 path = Path.Combine(Path.GetTempPath(), $"vb_{Guid.NewGuid()}.mp3");
                 await _myInstantsService.DownloadSoundAsync(url, path);
-                SetStatus($"▶ {name}", _success);
+                _currentlyPlaying = name;
+                SetStatus($"▶ {name}", true);
             }
 
             _audioService.PlaySound(path, item?.Volume ?? 1.0f);
         }
         catch (Exception ex)
         {
-            SetStatus($"Hata: {ex.Message}", _danger);
+            _currentlyPlaying = null;
+            SetStatus($"Hata: {ex.Message}", false);
         }
     }
 
-    private void SetStatus(string text, Color color)
+    private string GetStatusText()
     {
-        _statusLabel.Text = text;
-        _statusLabel.ForeColor = color;
-        if (_miniStatus != null)
+        if (_currentlyPlaying != null)
+            return $"▶ {_currentlyPlaying}";
+
+        var mode = _audioService.OutputMode switch
         {
-            _miniStatus.Text = text.Length > 25 ? text[..22] + "..." : text;
-            _miniStatus.ForeColor = color;
+            AudioOutputMode.APO => "APO",
+            AudioOutputMode.VirtualCable => "VB-Cable",
+            _ => "Hoparlor"
+        };
+        return $"Hazir • {mode} • Ctrl+Shift+V";
+    }
+
+    private void SetStatus(string text, bool isPlaying)
+    {
+        if (isPlaying)
+        {
+            _statusLabel.Text = text;
+            _statusLabel.ForeColor = _success;
+            if (_miniStatus != null)
+            {
+                var shortText = text.Length > 22 ? text[..19] + "..." : text;
+                _miniStatus.Text = shortText;
+                _miniStatus.ForeColor = _success;
+            }
+        }
+        else
+        {
+            UpdateStatus();
         }
     }
 
     private void UpdateStatus()
     {
-        if (!_audioService.IsPlaying)
-            SetStatus("Hazir", _textMuted);
+        var text = GetStatusText();
+        var color = _currentlyPlaying != null ? _success : _textMuted;
+
+        _statusLabel.Text = text;
+        _statusLabel.ForeColor = color;
+
+        if (_miniStatus != null)
+        {
+            var shortText = _currentlyPlaying != null
+                ? $"▶ {(_currentlyPlaying.Length > 18 ? _currentlyPlaying[..15] + "..." : _currentlyPlaying)}"
+                : "Hazir";
+            _miniStatus.Text = shortText;
+            _miniStatus.ForeColor = color;
+        }
     }
 
     #endregion
@@ -781,13 +913,6 @@ public partial class MainForm : Form
             _favoritesList.Controls.Add(CreateSoundCard(item.Name, item.SourceUrl, true, item));
             if (item.Hotkey != Keys.None) RegisterItemHotkey(item);
         }
-    }
-
-    private void LoadMiniFavorites()
-    {
-        _miniFavorites.Controls.Clear();
-        foreach (var item in _settings.Sounds)
-            _miniFavorites.Controls.Add(CreateSoundCard(item.Name, item.SourceUrl, true, item, mini: true));
     }
 
     private void AddFavorite(string name, string url)
@@ -806,8 +931,8 @@ public partial class MainForm : Form
         });
 
         LoadFavorites();
-        if (_isMiniMode) LoadMiniFavorites();
-        SetStatus($"'{name}' favorilere eklendi", _success);
+        if (_isMiniMode) LoadMiniSounds();
+        SetStatus($"'{name}' eklendi", false);
     }
 
     private void RemoveFavorite(SoundItem item)
@@ -818,8 +943,8 @@ public partial class MainForm : Form
         try { if (File.Exists(item.LocalPath)) File.Delete(item.LocalPath); } catch { }
 
         LoadFavorites();
-        if (_isMiniMode) LoadMiniFavorites();
-        SetStatus($"'{item.Name}' silindi", _textMuted);
+        if (_isMiniMode) LoadMiniSounds();
+        SetStatus($"'{item.Name}' silindi", false);
     }
 
     private void SetHotkey(SoundItem item)
@@ -834,7 +959,7 @@ public partial class MainForm : Form
             _settingsService.Save(_settings);
             if (item.Hotkey != Keys.None) RegisterItemHotkey(item);
             LoadFavorites();
-            SetStatus($"Kisayol atandi: {item.HotkeyDisplayText}", _success);
+            SetStatus($"Kisayol: {item.HotkeyDisplayText}", false);
         }
     }
 
