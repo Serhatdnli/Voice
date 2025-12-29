@@ -35,11 +35,15 @@ public class MyInstantsService
             foreach (var node in instantNodes)
             {
                 var titleNode = node.SelectSingleNode(".//a[@class='instant-link']");
-                var buttonNode = node.SelectSingleNode(".//button[contains(@class, 'small-button')]");
+                // Site uses div.small-button with onmousedown, not button with onclick
+                var buttonNode = node.SelectSingleNode(".//div[contains(@class, 'small-button')]");
 
                 if (titleNode == null || buttonNode == null) continue;
 
-                var onClickAttr = buttonNode.GetAttributeValue("onclick", "");
+                // Try onmousedown first, then onclick as fallback
+                var onClickAttr = buttonNode.GetAttributeValue("onmousedown", "");
+                if (string.IsNullOrEmpty(onClickAttr))
+                    onClickAttr = buttonNode.GetAttributeValue("onclick", "");
                 var soundUrl = ExtractSoundUrl(onClickAttr);
 
                 if (string.IsNullOrEmpty(soundUrl)) continue;
@@ -78,11 +82,15 @@ public class MyInstantsService
             foreach (var node in instantNodes.Take(20))
             {
                 var titleNode = node.SelectSingleNode(".//a[@class='instant-link']");
-                var buttonNode = node.SelectSingleNode(".//button[contains(@class, 'small-button')]");
+                // Site uses div.small-button with onmousedown, not button with onclick
+                var buttonNode = node.SelectSingleNode(".//div[contains(@class, 'small-button')]");
 
                 if (titleNode == null || buttonNode == null) continue;
 
-                var onClickAttr = buttonNode.GetAttributeValue("onclick", "");
+                // Try onmousedown first, then onclick as fallback
+                var onClickAttr = buttonNode.GetAttributeValue("onmousedown", "");
+                if (string.IsNullOrEmpty(onClickAttr))
+                    onClickAttr = buttonNode.GetAttributeValue("onclick", "");
                 var soundUrl = ExtractSoundUrl(onClickAttr);
 
                 if (string.IsNullOrEmpty(soundUrl)) continue;
