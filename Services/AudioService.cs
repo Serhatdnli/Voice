@@ -135,8 +135,10 @@ public class AudioService : IDisposable
         }
         else if (OutputMode == AudioOutputMode.VirtualCable && PlayToVirtualCable && VirtualCableDeviceNumber.HasValue)
         {
-            // Fallback to VB-Cable
-            PlayToDevice(VirtualCableDeviceNumber.Value, filePath, effectiveVolume,
+            // VB-Cable with volume boost (virtual cables need higher volume)
+            var cableVolume = effectiveVolume * 3.0f; // 3x boost for virtual cable
+            cableVolume = Math.Min(cableVolume, 5.0f);
+            PlayToDevice(VirtualCableDeviceNumber.Value, filePath, cableVolume,
                 ref _virtualCableOutput, ref _currentCableReader);
         }
     }
