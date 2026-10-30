@@ -1,4 +1,30 @@
-# VoiceBoard - Meme Ses Karti
+# VoiceBoard
+
+A Windows soundboard that plays sounds **straight into your microphone stream** — no virtual audio cable, no switching microphones in Discord or in games.
+
+## How it works
+
+```
+sound file → C# app (NAudio) → shared-memory ring buffer → APO (C++) → microphone stream → Discord / game
+```
+
+- **A custom Audio Processing Object (APO).** A C++ COM component registered with the Windows audio engine sits on the microphone capture path. While a sound is playing it outputs the injected samples instead of the mic signal; otherwise it passes the microphone through untouched.
+- **Lock-free hand-off between processes.** The C# app decodes and resamples audio with NAudio and writes it into a memory-mapped ring buffer; read and write positions are atomics, so the real-time audio thread never waits on a lock.
+- **Built for in-game use.** Global hotkeys (`RegisterHotKey`) fire while a game has focus; sounds can be searched and downloaded from MyInstants; per-sound volume.
+- **Installer.** One-click PowerShell setup, or an Inno Setup package via `build.bat`.
+
+| Part | Tech |
+|---|---|
+| App | .NET 8, Windows Forms |
+| Audio injection | C++ APO (`IAudioProcessingObject`), memory-mapped file |
+| Audio | NAudio |
+| Sound search | HtmlAgilityPack |
+| Packaging | PowerShell, Inno Setup |
+
+---
+
+## Türkçe
+
 
 MyInstants.com entegrasyonlu, oyun ici ses efektleri icin Windows masaustu uygulamasi.
 
